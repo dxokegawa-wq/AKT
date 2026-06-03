@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <script>window.onerror = function(msg, url, line) { alert('Error: ' + msg + '\nLine: ' + line); };</script>
+  <title>AKT活動審査アプリ</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="app-header">
+      <div>
+        <h1>AKT活動審査</h1>
+        <div id="current-store-header" class="hidden text-sm text-secondary"></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div id="header-score" class="hidden">Total: <span id="total-score-display">0</span></div>
+        <button id="btn-open-admin" class="btn-icon" aria-label="設定">⚙️</button>
+      </div>
+    </header>
+
+    <!-- Setup Screen -->
+    <main id="screen-setup" class="screen active">
+      <div class="card glass">
+        <h2>基本設定</h2>
+        <div class="form-group">
+          <label for="date-select">審査日</label>
+          <input type="date" id="date-select">
+        </div>
+        <div class="form-group">
+          <label for="edition-select">審査編を選択</label>
+          <select id="edition-select">
+            <option value="all" selected>全項目</option>
+            <option value="hall">ホール編</option>
+            <option value="backyard">バックヤード編</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="evaluator-name">審査員名</label>
+          <input type="text" id="evaluator-name" placeholder="氏名を入力">
+        </div>
+        
+        <div class="route-info mt-4">
+          <h3>本日の巡回ルート (<span id="route-count">0</span>店舗)</h3>
+          <ul id="route-preview-list" class="route-list preview">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+
+        <button id="btn-start" class="btn btn-primary btn-large mt-4">巡回審査を開始する</button>
+      </div>
+    </main>
+
+    <!-- Scoring Screen -->
+    <main id="screen-scoring" class="screen">
+      <div class="store-progress">
+        <span id="store-progress-text"></span>
+      </div>
+      <div class="category-tabs" id="category-tabs"></div>
+      
+      <div id="questions-container" class="questions-container">
+        <!-- Questions will be dynamically injected here -->
+      </div>
+
+      <div id="store-summary-section" class="card mt-4" style="background: rgba(0,0,0,0.1); border-color: var(--card-border); padding: 16px;">
+        <h3 style="margin-bottom: 12px; font-size: 1.1rem;">【店舗ごとの総評・その他】</h3>
+        
+        <div class="form-group">
+          <label for="store-comment">店舗総評コメント</label>
+          <textarea id="store-comment" class="comment-input" rows="3" placeholder="この店舗についてのコメントを入力..."></textarea>
+        </div>
+
+        <div id="staff-summary-section">
+          <h4 style="margin-top: 16px; margin-bottom: 8px; font-size: 1rem; color: var(--text-secondary);">🌟 輝いていたスタッフ</h4>
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <input type="text" id="staff-name" placeholder="氏名" style="flex: 1; padding: 8px; font-size: 0.9rem;">
+            <input type="text" id="staff-position" placeholder="職位" style="flex: 1; padding: 8px; font-size: 0.9rem;">
+          </div>
+          <textarea id="staff-reason" class="comment-input" rows="2" placeholder="輝いていた理由..."></textarea>
+        </div>
+      </div>
+      
+      <div class="bottom-actions">
+        <button id="btn-next-store" class="btn btn-primary btn-large hidden">次の店舗へ進む</button>
+        <button id="btn-finish" class="btn btn-success btn-large hidden">全店舗の採点を完了</button>
+      </div>
+    </main>
+
+    <!-- Result Screen -->
+    <main id="screen-result" class="screen">
+      <div class="card glass text-center">
+        <h2>全ルート審査完了</h2>
+        <p class="text-secondary mt-2">お疲れ様でした。すべての店舗の審査が完了しました。</p>
+
+        <div class="action-grid mt-4">
+          <button id="btn-download-excel" class="btn btn-excel btn-large">Excel形式で一括出力</button>
+          <button id="btn-back-to-setup" class="btn btn-secondary btn-large">トップに戻る</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Admin Panel Screen -->
+    <main id="screen-admin" class="screen">
+      <div class="card glass">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>⚙️ 管理者設定</h2>
+          <button id="btn-close-admin" class="btn btn-secondary">閉じる</button>
+        </div>
+        
+        <div class="category-tabs">
+          <button class="tab-btn active" id="tab-admin-route">ルート設定</button>
+          <button class="tab-btn" id="tab-admin-checklist">採点項目設定</button>
+        </div>
+
+        <!-- Route Settings -->
+        <div id="admin-route-view" class="admin-view">
+          <div class="form-group" style="display: flex; gap: 10px;">
+            <input type="text" id="new-store-input" placeholder="新しい店舗名">
+            <button id="btn-add-store" class="btn btn-primary">追加</button>
+          </div>
+          <ul id="admin-route-list" class="route-list editable">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+
+        <!-- Checklist Settings -->
+        <div id="admin-checklist-view" class="admin-view hidden">
+          <p class="text-secondary text-sm mb-4">
+            配点はカンマ区切りで入力してください（例: 5,1,0 または 10,8,4,0）。
+          </p>
+          <div id="admin-categories-container">
+            <!-- Populated by JS -->
+          </div>
+          <button id="btn-add-category" class="btn btn-secondary mt-4" style="width:100%">+ 新しいカテゴリを追加</button>
+        </div>
+        
+        <div class="mt-4 pt-4" style="border-top: 1px solid var(--card-border); text-align: right;">
+          <button id="btn-save-admin" class="btn btn-success">設定を保存</button>
+          <button id="btn-reset-admin" class="btn btn-danger" style="margin-top: 10px; width: 100%;">初期データにリセット</button>
+        </div>
+      </div>
+    </main>
+    
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal hidden">
+      <div class="modal-content glass">
+        <h3>管理者パスワード</h3>
+        <input type="password" id="admin-password-input" class="mt-4" placeholder="パスワードを入力">
+        <div class="action-grid mt-4" style="grid-template-columns: 1fr 1fr;">
+          <button id="btn-cancel-password" class="btn btn-secondary">キャンセル</button>
+          <button id="btn-submit-password" class="btn btn-primary">ログイン</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
