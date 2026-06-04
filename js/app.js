@@ -625,7 +625,7 @@ async function exportToExcelAll() {
   try {
     const zip = new JSZip();
     const dateStr = state.date || new Date().toISOString().split('T')[0];
-    const storeMatchCounts = []; // 全店舗のマッチ状況を保存
+    const storeMatchCounts = []; // 全店舗のマッチ状況と書き込み列を保存
 
     // テンプレートファイルの読み込み
     let templateBuffer;
@@ -738,12 +738,12 @@ async function exportToExcelAll() {
         if (matchedItem) {
           matchCount++;
           
-          // 結合セルを安全にスキップするロジック（スレーブセルへの書き込みによる結合破壊を防ぐ）
+          // 結合セルを安全にスキップするロジック（公式プロパティを使用）
           let targetScoreCol = matchedColNumber + 1;
           while (true) {
             const c = row.getCell(targetScoreCol);
-            // ExcelJS.ValueType.Merge は 1
-            if (c && c.type === 1) {
+            // セルが結合されており、かつ自分がマスター（左上）でない場合はスレーブセル
+            if (c && c.isMerged && c.master && c.master.address !== c.address) {
               targetScoreCol++;
             } else {
               break;
@@ -758,7 +758,7 @@ async function exportToExcelAll() {
         }
       });
       
-      // シート内で最も右にある「安全な列」を点数の列として統一する（結合忘れによる列ズレ防止）
+      // シート内で最も右にある「安全な列」を点数の列として統一する
       let finalScoreCol = scoreColIndex;
       for (const m of matchedRows) {
         if (m.requiredCol > finalScoreCol) {
@@ -766,6 +766,9 @@ async function exportToExcelAll() {
         }
       }
       let finalCommentCol = finalScoreCol + 1;
+
+      // デバッグ用：書き込んだ列を保持
+      storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ (書込先:${finalScoreCol}列目)`);
 
       // 2パス目：確定した統一列に点数とコメントを書き込む
       matchedRows.forEach(m => {
@@ -820,7 +823,7 @@ async function exportToExcelAll() {
     saveAs(zipBlob, `AKT活動審査表_${dateStr}.zip`);
     
     // マッチング結果をユーザーにお知らせする（デバッグ用）
-    alert(`出力が完了しました！\n\n【テンプレートへの反映状況】\n${storeMatchCounts.join('\n')}\n\n※もし0件マッチになっている場合は、エクセルの項目名とアプリの項目名が違うため点数が入りません。`);
+    alert(`出力が完了しました！\n\n【テンプレートへの反映状況】\n${storeMatchCounts.join('\n')}\n\n※0件マッチの場合は項目名違いです。`);
     
   } catch(e) {
     console.error(e);
