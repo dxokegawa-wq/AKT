@@ -703,6 +703,7 @@ async function exportToExcelAll() {
         };
 
         let matchedItem = null;
+        let matchedColNumber = -1;
 
         // 行内のすべてのセルをスキャンして質問文を探す
         row.eachCell((cell, colNumber) => {
@@ -725,6 +726,7 @@ async function exportToExcelAll() {
                 });
                 if (found) {
                   matchedItem = found;
+                  matchedColNumber = colNumber;
                   break;
                 }
               }
@@ -736,12 +738,23 @@ async function exportToExcelAll() {
           matchCount++; // マッチした件数をカウント
           const ans = storeAnswers[matchedItem.id] || {};
           
-          // 自動検出した列に点数とコメントを書き込む
+          // 点数を書き込む列が、質問文の列と同じ（または左）になって質問を上書きしてしまうのを防ぐ
+          let targetScoreCol = scoreColIndex;
+          let targetCommentCol = commentColIndex;
+          
+          if (targetScoreCol <= matchedColNumber) {
+            targetScoreCol = matchedColNumber + 1; // 必ず質問文の右隣の列にする
+          }
+          if (targetCommentCol <= targetScoreCol) {
+            targetCommentCol = targetScoreCol + 1;
+          }
+
+          // 点数とコメントを書き込む
           if (ans.score !== undefined) {
-            row.getCell(scoreColIndex).value = ans.score;
+            row.getCell(targetScoreCol).value = ans.score;
           }
           if (ans.comment) {
-            row.getCell(commentColIndex).value = ans.comment;
+            row.getCell(targetCommentCol).value = ans.comment;
           }
         }
       });
