@@ -643,11 +643,29 @@ async function exportToExcelAll() {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(templateBuffer);
       
-      // シート名が店舗名のものがあればそれを使用、無ければ最初のシートを使用
-      let ws = workbook.getWorksheet(storeName);
-      if (!ws) {
-        ws = workbook.worksheets[0]; 
+      // シート名が店舗名を含むものがあればそれを使用、無ければ最初のシートを使用
+      let targetWs = null;
+      workbook.eachSheet((sheet) => {
+        if (sheet.name.includes(storeName) || storeName.includes(sheet.name)) {
+          targetWs = sheet;
+        }
+      });
+      if (!targetWs) {
+        targetWs = workbook.worksheets[0]; 
       }
+
+      // 該当店舗以外の不要なシートをすべて削除する
+      const sheetIdsToRemove = [];
+      workbook.eachSheet((sheet) => {
+        if (sheet.id !== targetWs.id) {
+          sheetIdsToRemove.push(sheet.id);
+        }
+      });
+      sheetIdsToRemove.forEach(id => workbook.removeWorksheet(id));
+
+      let ws = targetWs;
+      ws.name = storeName.substring(0, 31); // 残ったシートの名前を現在の店舗名にする
+
 
       const storeAnswers = state.answers[storeName] || {};
       

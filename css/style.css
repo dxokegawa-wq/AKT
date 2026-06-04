@@ -197,9 +197,18 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   overflow-x: auto;
   gap: 12px;
-  padding-bottom: 12px;
+  padding: 12px 0;
   margin-bottom: 20px;
   scrollbar-width: none; /* Firefox */
+  
+  /* スマホでのスクロール追従（Sticky）設定 */
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .category-tabs::-webkit-scrollbar {
