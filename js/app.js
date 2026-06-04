@@ -669,7 +669,7 @@ async function exportToExcelAll() {
 
       const storeAnswers = state.answers[storeName] || {};
       
-      // テンプレート内のC列（3列目）を上から走査し、一致する項目名があれば点数とコメントを記入
+      // テンプレート内の各行を走査し、質問項目を探す
       ws.eachRow((row, rowNumber) => {
         // 店舗名の自動置換（セルの中に「岩槻本店」があれば現在の店舗名に書き換え）
         row.eachCell((cell, colNumber) => {
@@ -678,39 +678,52 @@ async function exportToExcelAll() {
           }
         });
 
-        const cellC = row.getCell(3);
-        let questionText = '';
-        
-        if (cellC.value && typeof cellC.value === 'object' && cellC.value.richText) {
-          questionText = cellC.value.richText.map(rt => rt.text).join('');
-        } else if (typeof cellC.value === 'string') {
-          questionText = cellC.value;
-        }
-        
-        if (questionText) {
-          // スペースや改行を無視して比較するための正規化関数
-          const normalize = (str) => str.replace(/[\s\n\r\t　]/g, '');
-          const normalizedQText = normalize(questionText);
-          
-          if (normalizedQText !== '') {
-            // 該当する質問を検索
-            let matchedItem = null;
-            for (const cat of appChecklist) {
-              matchedItem = cat.items.find(i => normalize(i.text) === normalizedQText);
-              if (matchedItem) break;
-            }
-            
-            if (matchedItem) {
-              const ans = storeAnswers[matchedItem.id] || {};
-              // D列(4)に点数
-              if (ans.score !== undefined) {
-                row.getCell(4).value = ans.score;
+        // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
+        const normalize = (str) => {
+          if (!str) return '';
+          return str.replace(/[\s\n\r\t　・、。(),（）「」]/g, '');
+        };
+
+        let matchedItem = null;
+
+        // 行内のすべてのセルをスキャンして質問文を探す（列がC列以外にズレていても見つけるため）
+        row.eachCell((cell, colNumber) => {
+          if (matchedItem) return; // すでに見つかっていればスキップ
+
+          let cellText = '';
+          if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
+            cellText = cell.value.richText.map(rt => rt.text).join('');
+          } else if (typeof cell.value === 'string') {
+            cellText = cell.value;
+          }
+
+          if (cellText) {
+            const normCellText = normalize(cellText);
+            if (normCellText.length > 5) { // 短すぎる文字での誤検知を防ぐ
+              for (const cat of appChecklist) {
+                const found = cat.items.find(i => {
+                  const normItemText = normalize(i.text);
+                  // テンプレート側に「1.」などの番号が振られていてもマッチするように、部分一致を許容
+                  return normCellText.includes(normItemText) || normItemText.includes(normCellText);
+                });
+                if (found) {
+                  matchedItem = found;
+                  break;
+                }
               }
-              // E列(5)にコメント
-              if (ans.comment) {
-                row.getCell(5).value = ans.comment;
-              }
             }
+          }
+        });
+        
+        if (matchedItem) {
+          const ans = storeAnswers[matchedItem.id] || {};
+          // D列(4)に点数
+          if (ans.score !== undefined) {
+            row.getCell(4).value = ans.score;
+          }
+          // E列(5)にコメント
+          if (ans.comment) {
+            row.getCell(5).value = ans.comment;
           }
         }
       });
