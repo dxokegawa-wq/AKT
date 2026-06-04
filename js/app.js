@@ -625,6 +625,7 @@ async function exportToExcelAll() {
   try {
     const zip = new JSZip();
     const dateStr = state.date || new Date().toISOString().split('T')[0];
+    const storeMatchCounts = []; // 全店舗のマッチ状況を保存
 
     // テンプレートファイルの読み込み
     let templateBuffer;
@@ -668,6 +669,7 @@ async function exportToExcelAll() {
 
 
       const storeAnswers = state.answers[storeName] || {};
+      let matchCount = 0; // マッチ件数カウント用
       
       // テンプレート内の各行を走査し、質問項目を探す
       ws.eachRow((row, rowNumber) => {
@@ -716,6 +718,7 @@ async function exportToExcelAll() {
         });
         
         if (matchedItem) {
+          matchCount++; // マッチした件数をカウント
           const ans = storeAnswers[matchedItem.id] || {};
           // D列(4)に点数
           if (ans.score !== undefined) {
@@ -727,6 +730,9 @@ async function exportToExcelAll() {
           }
         }
       });
+      
+      // デバッグ用：マッチした件数を保持
+      storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ`);
 
       // === 写真シート ===
       const storePhotos = [];
@@ -765,6 +771,9 @@ async function exportToExcelAll() {
     // ZIP生成とダウンロード
     const zipBlob = await zip.generateAsync({ type: "blob" });
     saveAs(zipBlob, `AKT活動審査表_${dateStr}.zip`);
+    
+    // マッチング結果をユーザーにお知らせする（デバッグ用）
+    alert(`出力が完了しました！\n\n【テンプレートへの反映状況】\n${storeMatchCounts.join('\n')}\n\n※もし0件マッチになっている場合は、エクセルの項目名とアプリの項目名が違うため点数が入りません。`);
     
   } catch(e) {
     console.error(e);
