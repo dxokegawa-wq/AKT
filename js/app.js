@@ -679,25 +679,37 @@ async function exportToExcelAll() {
         });
 
         const cellC = row.getCell(3);
-        const questionText = cellC.value;
+        let questionText = '';
         
-        if (typeof questionText === 'string' && questionText.trim() !== '') {
-          // 該当する質問を検索
-          let matchedItem = null;
-          for (const cat of appChecklist) {
-            matchedItem = cat.items.find(i => i.text.trim() === questionText.trim());
-            if (matchedItem) break;
-          }
+        if (cellC.value && typeof cellC.value === 'object' && cellC.value.richText) {
+          questionText = cellC.value.richText.map(rt => rt.text).join('');
+        } else if (typeof cellC.value === 'string') {
+          questionText = cellC.value;
+        }
+        
+        if (questionText) {
+          // スペースや改行を無視して比較するための正規化関数
+          const normalize = (str) => str.replace(/[\s\n\r\t　]/g, '');
+          const normalizedQText = normalize(questionText);
           
-          if (matchedItem) {
-            const ans = storeAnswers[matchedItem.id] || {};
-            // D列(4)に点数
-            if (ans.score !== undefined) {
-              row.getCell(4).value = ans.score;
+          if (normalizedQText !== '') {
+            // 該当する質問を検索
+            let matchedItem = null;
+            for (const cat of appChecklist) {
+              matchedItem = cat.items.find(i => normalize(i.text) === normalizedQText);
+              if (matchedItem) break;
             }
-            // E列(5)にコメント
-            if (ans.comment) {
-              row.getCell(5).value = ans.comment;
+            
+            if (matchedItem) {
+              const ans = storeAnswers[matchedItem.id] || {};
+              // D列(4)に点数
+              if (ans.score !== undefined) {
+                row.getCell(4).value = ans.score;
+              }
+              // E列(5)にコメント
+              if (ans.comment) {
+                row.getCell(5).value = ans.comment;
+              }
             }
           }
         }
