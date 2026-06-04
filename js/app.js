@@ -172,8 +172,8 @@ async function init() {
 
 // Data Management
 function loadData() {
-  const savedStores = localStorage.getItem('akt_stores');
-  const savedChecklist = localStorage.getItem('akt_checklist');
+  const savedStores = localStorage.getItem('akt_stores_v2');
+  const savedChecklist = localStorage.getItem('akt_checklist_v2');
   
   if (savedStores) {
     appStores = JSON.parse(savedStores);
@@ -189,8 +189,8 @@ function loadData() {
 }
 
 function saveDataToLocal() {
-  localStorage.setItem('akt_stores', JSON.stringify(appStores));
-  localStorage.setItem('akt_checklist', JSON.stringify(appChecklist));
+  localStorage.setItem('akt_stores_v2', JSON.stringify(appStores));
+  localStorage.setItem('akt_checklist_v2', JSON.stringify(appChecklist));
 }
 
 // UI Helpers

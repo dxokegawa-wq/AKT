@@ -10,8 +10,10 @@ const checklistData = [
     items: [
       { id: "q1", text: "駐車・駐輪場また景品交換所付近はゴミや落ち葉なども無く、きれいな状態でしたか（雑草の状況含む）", points: [3, 1, 0], isPriority: false },
       { id: "q2", text: "外周でのぼり旗や土台、設備などの破損や不備はありませんでしたか ※旗のほつれなど含む", points: [3, 1, 0], isPriority: false },
+      { id: "q3", text: "店舗の軒下や出入り口、賞品交換所・駐輪場などにくもの巣はないか、また鳥の巣などがある場合は、糞害防止対策や注意表示はされているか", points: [5, 1, 0], isPriority: true },
       { id: "q4", text: "店外に設置されているゴミ箱は、ゴミで溢れていることなく、見た目の汚れも無く清潔な状態か", points: [3, 1, 0], isPriority: false },
-      { id: "q5", text: "店外に設けられた喫煙コーナー内や周辺、置き灰皿は吸殻が溜まっていることなく清潔に保たれているか ※桶川店一部店内", points: [3, 1, 0], isPriority: false }
+      { id: "q5", text: "店外に設けられた喫煙コーナー内や周辺、置き灰皿は吸殻が溜まっていることなく清潔に保たれているか ※桶川店一部店内", points: [3, 1, 0], isPriority: false },
+      { id: "q6", text: "外回りのＰＯＰ・装飾物に歪みや汚れ、色あせなどはありませんでしたか", points: [5, 1, 0], isPriority: true }
     ]
   },
   {
@@ -19,6 +21,7 @@ const checklistData = [
     edition: "hall",
     items: [
       { id: "q7", text: "出入口及び施設内の手指の消毒設備は、お客様が使用しやすい場所に設置されているか ※平塚店のみ出入口は除く", points: [3, 1, 0], isPriority: false },
+      { id: "q8", text: "ホール内のＰＯＰやポスター、装飾品・掲示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [5, 1, 0], isPriority: true },
       { id: "q9", text: "トイレ内の装飾品・提示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [3, 1, 0], isPriority: false },
       { id: "q10", text: "カウンター賞品のプライスカードやPOPは、見やすく、汚れ・色落ち・破損はないか", points: [3, 1, 0], isPriority: false },
       { id: "q11", text: "島上などのフラッグはキチンと揃っていて、曲がりや汚れ・色落ちなどはないか", points: [3, 1, 0], isPriority: false },
@@ -33,6 +36,7 @@ const checklistData = [
       { id: "q14", text: "自動ドアの下のレール内はキレイに清掃されていましたか", points: [3, 1, 0], isPriority: false },
       { id: "q15", text: "遊技中の台に汚れやゴミが目立っていることもなく、特に空き台はゴミも無く清潔な状態ですか", points: [3, 1, 0], isPriority: false },
       { id: "q16", text: "トイレは不快な臭いがしていないか", points: [3, 1, 0], isPriority: false },
+      { id: "q17", text: "トイレ内の洗面台・便器や壁・ドア・床などに汚れやゴミが無く、清潔に保たれていましたか　※個室・洗面台下の棚の中含む", points: [5, 1, 0], isPriority: true },
       { id: "q18", text: "トイレのゴミ箱はペーパータオルが溢れていたり、備品などは切れていないか", points: [3, 1, 0], isPriority: false },
       { id: "q19", text: "お客様休憩スペース及びプラスワンコーナーはホコリも無く、清潔な状態でしたか", points: [3, 1, 0], isPriority: false },
       { id: "q20", text: "各自販機・ATM（デビット）・精算機などに汚れやホコリなど目立っていませんでしたか", points: [3, 1, 0], isPriority: false },
