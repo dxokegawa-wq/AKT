@@ -88,6 +88,7 @@ const btnOpenAdmin = document.getElementById('btn-open-admin');
 const storeProgressText = document.getElementById('store-progress-text');
 const categoryTabs = document.getElementById('category-tabs');
 const questionsContainer = document.getElementById('questions-container');
+const btnPrevStore = document.getElementById('btn-prev-store');
 const btnNextStore = document.getElementById('btn-next-store');
 const btnFinish = document.getElementById('btn-finish');
 
@@ -150,6 +151,7 @@ async function init() {
 
   // Events
   btnStart.addEventListener('click', startScoringSequence);
+  btnPrevStore.addEventListener('click', handleStorePrevious);
   btnNextStore.addEventListener('click', () => handleStoreCompletion(false));
   btnFinish.addEventListener('click', () => handleStoreCompletion(true));
   btnBackToSetup.addEventListener('click', resetApp);
@@ -283,6 +285,12 @@ function loadStoreScoring() {
     btnFinish.classList.remove('hidden');
   }
 
+  if (state.routeIndex > 0) {
+    btnPrevStore.classList.remove('hidden');
+  } else {
+    btnPrevStore.classList.add('hidden');
+  }
+
   let storeAnswers = state.answers[storeName];
   if (!storeAnswers) {
     storeAnswers = { storeComment: '', staffName: '', staffPosition: '', staffReason: '' };
@@ -307,6 +315,25 @@ function loadStoreScoring() {
     questionsContainer.innerHTML = '<p class="text-secondary text-center">この編に該当する設問がありません。</p>';
   }
   updateTotalScore();
+}
+
+async function handleStorePrevious() {
+  if (state.routeIndex > 0) {
+    // 戻る前に現在の入力内容を保存する
+    const storeName = appStores[state.routeIndex];
+    const storeAnswers = state.answers[storeName];
+    
+    storeAnswers.storeComment = storeCommentInput.value;
+    storeAnswers.staffName = staffNameInput.value;
+    storeAnswers.staffPosition = staffPositionInput.value;
+    storeAnswers.staffReason = staffReasonInput.value;
+    
+    await saveStateToIDB();
+
+    state.routeIndex--;
+    loadStoreScoring();
+    window.scrollTo(0, 0); // 一番上に戻す
+  }
 }
 
 async function handleStoreCompletion(isFinal) {
