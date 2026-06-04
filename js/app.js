@@ -613,117 +613,115 @@ async function resetApp() {
   switchScreen('setup');
 }
 
-// Export All Stores
 async function exportToExcelAll() {
-  if (typeof ExcelJS === 'undefined') {
-    alert("ExcelJSライブラリの読み込みに失敗しています。インターネット接続を確認してください。");
+  if (appStores.length === 0) {
+    alert("出力する店舗データがありません。");
     return;
   }
+  
   btnDownloadExcel.textContent = '出力中...';
   btnDownloadExcel.disabled = true;
 
   try {
-    const workbook = new ExcelJS.Workbook();
-    const dateStr = state.date;
-    const evaluator = state.evaluator;
+    const zip = new JSZip();
+    const dateStr = state.date || new Date().toISOString().split('T')[0];
 
-    const allPhotos = [];
-
-    appStores.forEach(storeName => {
-      const storeAnswers = state.answers[storeName] || {};
-      
-      let storeTotal = 0;
-      for (const qId in storeAnswers) {
-        if (storeAnswers[qId].score !== undefined) storeTotal += storeAnswers[qId].score;
-      }
-
-      const sheetName = storeName.substring(0, 31);
-      const ws = workbook.addWorksheet(sheetName);
-
-      ws.getColumn(1).width = 15;
-      ws.getColumn(2).width = 5;
-      ws.getColumn(3).width = 5;
-      ws.getColumn(4).width = 50;
-      ws.getColumn(5).width = 10;
-      ws.getColumn(6).width = 40;
-      ws.getColumn(7).width = 25;
-
-      ws.addRow(['AKT活動審査表']);
-      ws.addRow(['対象店舗', storeName]);
-      ws.addRow(['審査日', dateStr]);
-      ws.addRow(['審査員', evaluator]);
-      ws.addRow(['総合得点', storeTotal]);
-      ws.addRow([]);
-      ws.addRow(['【店舗まとめ】']);
-      ws.addRow(['店舗総評', storeAnswers.storeComment || '']);
-      
-      if (state.edition !== 'backyard') {
-        ws.addRow(['輝いていたスタッフ', `${storeAnswers.staffName || ''} (${storeAnswers.staffPosition || ''}) - ${storeAnswers.staffReason || ''}`]);
-      }
-
-      ws.addRow([]);
-      ws.addRow(['カテゴリ', 'No', '強化', '審査項目', '点数', 'コメント', '追加指標(温度/湿度)']);
-
-      const filteredChecklist = getFilteredChecklist();
-      let qIndex = 1;
-      filteredChecklist.forEach(cat => {
-        cat.items.forEach((item) => {
-          const ans = storeAnswers[item.id] || {};
-          const score = ans.score !== undefined ? ans.score : '未回答';
-          const comment = ans.comment || '';
-          const priorityStr = item.isPriority ? '★' : '';
-          let metricsStr = '';
-          if (item.hasTempHumidity && (ans.temperature || ans.humidity)) {
-            metricsStr = `温度: ${ans.temperature || '-'}℃ / 湿度: ${ans.humidity || '-'}%`;
-          }
-          ws.addRow([cat.category, qIndex, priorityStr, item.text, score, comment, metricsStr]);
-
-          if (ans.photo) {
-            allPhotos.push({
-              storeName,
-              qIndex,
-              text: item.text,
-              base64: ans.photo
-            });
-          }
-          qIndex++;
-        });
-      });
-    });
-
-    // Create Photos Sheet if there are any photos
-    if (allPhotos.length > 0) {
-      const photoWs = workbook.addWorksheet('添付写真一覧');
-      photoWs.getColumn(1).width = 15; // 店舗名
-      photoWs.getColumn(2).width = 5;  // No
-      photoWs.getColumn(3).width = 60; // 項目名
-      photoWs.getColumn(4).width = 60; // 写真
-
-      photoWs.addRow(['店舗名', 'No', '項目名', '写真']);
-
-      let rowIndex = 2;
-      allPhotos.forEach(p => {
-        photoWs.addRow([p.storeName, p.qIndex, p.text, '']);
-        // Add image
-        const base64Data = p.base64.replace(/^data:image\/\w+;base64,/, "");
-        const imageId = workbook.addImage({
-          base64: base64Data,
-          extension: 'jpeg',
-        });
-        
-        photoWs.getRow(rowIndex).height = 200;
-        photoWs.addImage(imageId, {
-          tl: { col: 3, row: rowIndex - 1 },
-          ext: { width: 300, height: 260 } 
-        });
-        
-        rowIndex++;
-      });
+    // テンプレートファイルの読み込み
+    let templateBuffer;
+    try {
+      const response = await fetch('./template.xlsx');
+      if (!response.ok) throw new Error('Template not found');
+      templateBuffer = await response.arrayBuffer();
+    } catch(e) {
+      alert('「template.xlsx」が見つかりません。アプリのフォルダ内に template.xlsx が配置されているか確認してください。');
+      btnDownloadExcel.textContent = 'Excel形式で一括出力';
+      btnDownloadExcel.disabled = false;
+      return;
     }
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    saveAs(blob, `AKT審査表_${dateStr}.xlsx`);
+    for (const storeName of appStores) {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(templateBuffer);
+      
+      // シート名が店舗名のものがあればそれを使用、無ければ最初のシートを使用
+      let ws = workbook.getWorksheet(storeName);
+      if (!ws) {
+        ws = workbook.worksheets[0]; 
+      }
+
+      const storeAnswers = state.answers[storeName] || {};
+      
+      // テンプレート内のC列（3列目）を上から走査し、一致する項目名があれば点数とコメントを記入
+      ws.eachRow((row, rowNumber) => {
+        // 店舗名の自動置換（セルの中に「岩槻本店」があれば現在の店舗名に書き換え）
+        row.eachCell((cell, colNumber) => {
+          if (typeof cell.value === 'string' && cell.value.includes('岩槻本店')) {
+             cell.value = cell.value.replace('岩槻本店', storeName);
+          }
+        });
+
+        const cellC = row.getCell(3);
+        const questionText = cellC.value;
+        
+        if (typeof questionText === 'string' && questionText.trim() !== '') {
+          // 該当する質問を検索
+          let matchedItem = null;
+          for (const cat of appChecklist) {
+            matchedItem = cat.items.find(i => i.text.trim() === questionText.trim());
+            if (matchedItem) break;
+          }
+          
+          if (matchedItem) {
+            const ans = storeAnswers[matchedItem.id] || {};
+            // D列(4)に点数
+            if (ans.score !== undefined) {
+              row.getCell(4).value = ans.score;
+            }
+            // E列(5)にコメント
+            if (ans.comment) {
+              row.getCell(5).value = ans.comment;
+            }
+          }
+        }
+      });
+
+      // === 写真シート ===
+      const storePhotos = [];
+      for (const qId in storeAnswers) {
+        if (storeAnswers[qId] && storeAnswers[qId].photo) {
+          const itemText = appChecklist.flatMap(c => c.items).find(i => i.id === qId)?.text || qId;
+          storePhotos.push({ text: itemText, base64: storeAnswers[qId].photo });
+        }
+      }
+
+      if (storePhotos.length > 0) {
+        const photoWs = workbook.addWorksheet('写真');
+        photoWs.getColumn(1).width = 50;
+        photoWs.getColumn(2).width = 60;
+        photoWs.addRow(['項目名', '写真']);
+
+        let pRowIndex = 2;
+        storePhotos.forEach(p => {
+          photoWs.addRow([p.text, '']);
+          const base64Data = p.base64.replace(/^data:image\/\w+;base64,/, "");
+          const imageId = workbook.addImage({ base64: base64Data, extension: 'jpeg' });
+          photoWs.getRow(pRowIndex).height = 200;
+          photoWs.addImage(imageId, {
+            tl: { col: 1, row: pRowIndex - 1 },
+            ext: { width: 300, height: 260 } 
+          });
+          pRowIndex++;
+        });
+      }
+
+      // 1店舗分のエクセルデータをバッファ化してZIPに追加
+      const buffer = await workbook.xlsx.writeBuffer();
+      zip.file(`${storeName}店_AKT活動審査表.xlsx`, buffer);
+    }
+
+    // ZIP生成とダウンロード
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    saveAs(zipBlob, `AKT活動審査表_${dateStr}.zip`);
     
   } catch(e) {
     console.error(e);
