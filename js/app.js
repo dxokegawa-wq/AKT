@@ -671,6 +671,22 @@ async function exportToExcelAll() {
       const storeAnswers = state.answers[storeName] || {};
       let matchCount = 0; // マッチ件数カウント用
       
+      // === シート内の「点数」「コメント」の列（位置）を自動検出する ===
+      let scoreColIndex = 4; // デフォルトD列
+      let commentColIndex = 5; // デフォルトE列
+      ws.eachRow((row) => {
+        row.eachCell((cell, colNumber) => {
+          let text = '';
+          if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
+            text = cell.value.richText.map(rt => rt.text).join('');
+          } else if (cell.value) {
+            text = String(cell.value);
+          }
+          if (text.includes('点数')) scoreColIndex = colNumber;
+          if (text.includes('コメント')) commentColIndex = colNumber;
+        });
+      });
+
       // テンプレート内の各行を走査し、質問項目を探す
       ws.eachRow((row, rowNumber) => {
         // 店舗名の自動置換（セルの中に「岩槻本店」があれば現在の店舗名に書き換え）
@@ -688,7 +704,7 @@ async function exportToExcelAll() {
 
         let matchedItem = null;
 
-        // 行内のすべてのセルをスキャンして質問文を探す（列がC列以外にズレていても見つけるため）
+        // 行内のすべてのセルをスキャンして質問文を探す
         row.eachCell((cell, colNumber) => {
           if (matchedItem) return; // すでに見つかっていればスキップ
 
@@ -701,11 +717,10 @@ async function exportToExcelAll() {
 
           if (cellText) {
             const normCellText = normalize(cellText);
-            if (normCellText.length > 5) { // 短すぎる文字での誤検知を防ぐ
+            if (normCellText.length > 5) { 
               for (const cat of appChecklist) {
                 const found = cat.items.find(i => {
                   const normItemText = normalize(i.text);
-                  // テンプレート側に「1.」などの番号が振られていてもマッチするように、部分一致を許容
                   return normCellText.includes(normItemText) || normItemText.includes(normCellText);
                 });
                 if (found) {
@@ -720,13 +735,13 @@ async function exportToExcelAll() {
         if (matchedItem) {
           matchCount++; // マッチした件数をカウント
           const ans = storeAnswers[matchedItem.id] || {};
-          // D列(4)に点数
+          
+          // 自動検出した列に点数とコメントを書き込む
           if (ans.score !== undefined) {
-            row.getCell(4).value = ans.score;
+            row.getCell(scoreColIndex).value = ans.score;
           }
-          // E列(5)にコメント
           if (ans.comment) {
-            row.getCell(5).value = ans.comment;
+            row.getCell(commentColIndex).value = ans.comment;
           }
         }
       });
