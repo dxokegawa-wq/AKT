@@ -22,8 +22,8 @@ const checklistData = [
     items: [
       { id: "q7", text: "出入口及び施設内の手指の消毒設備は、お客様が使用しやすい場所に設置されているか ※平塚店のみ出入口は除く", points: [3, 1, 0], isPriority: false },
       { id: "q8", text: "ホール内のＰＯＰやポスター、装飾品・掲示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [5, 1, 0], isPriority: true },
-      { id: "q9", text: "トイレ内の装飾品・提示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [3, 1, 0], isPriority: false },
-      { id: "q10", text: "カウンター賞品のプライスカードやPOPは、見やすく、汚れ・色落ち・破損はないか", points: [3, 1, 0], isPriority: false },
+      { id: "q9", text: "トイレ内の装飾品・掲示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [3, 1, 0], isPriority: false },
+      { id: "q10", text: "カウンター賞品のプライスカードやＰＯＰは、見やすく、汚れ・色落ち・破損はないか", points: [3, 1, 0], isPriority: false },
       { id: "q11", text: "島上などのフラッグはキチンと揃っていて、曲がりや汚れ・色落ちなどはないか", points: [3, 1, 0], isPriority: false },
       { id: "q12", text: "イーゼルやデジタルサイネージなどは、破損・汚れやホコリが無く清潔な状態でしたか", points: [3, 1, 0], isPriority: false }
     ]
@@ -45,7 +45,7 @@ const checklistData = [
       { id: "q23", text: "賞品や賞品棚にホコリが目立っている状態になっていませんでしたか", points: [3, 1, 0], isPriority: false },
       { id: "q24", text: "ホール内の床は汚れが無く、玉やメダルが目立つ場所に落ちていることは無かったですか", points: [3, 1, 0], isPriority: false },
       { id: "q25", text: "ホール内の消火器や消火栓は汚れやホコリが目立っていませんでしたか", points: [3, 1, 0], isPriority: false },
-      { id: "q26", text: "店内の空調は快適な状態でしたか（温度、異臭の有無等）※基準：温度25〜28°、湿度40〜70%", points: [3, 1, 0], isPriority: false, hasTempHumidity: true }
+      { id: "q26", text: "店内の空調は快適な状態でしたか（温度、異臭の有無等）※基準：温度25～28°、湿度40～70%", points: [3, 1, 0], isPriority: false, hasTempHumidity: true }
     ]
   },
 

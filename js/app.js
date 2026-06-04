@@ -259,7 +259,7 @@ async function startScoringSequence() {
 function getFilteredChecklist() {
   const storeName = appStores[state.routeIndex];
   
-  if (storeName === '本部') {
+  if (storeName === '本部' || storeName.includes('本部')) {
     if (state.edition === 'hall') return [];
     return appChecklist.filter(cat => cat.edition === 'hq');
   }
@@ -727,7 +727,12 @@ async function exportToExcelAll() {
         // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
         const normalize = (str) => {
           if (!str) return '';
-          return str.replace(/[\s\n\r\t　・、。(),（）「」]/g, '');
+          // 全角英数字を半角に、波ダッシュを統一
+          let s = str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(ch) {
+            return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+          });
+          s = s.replace(/[〜～]/g, '~');
+          return s.replace(/[\s\n\r\t　・、。(),（）「」]/g, '').toLowerCase();
         };
 
         let matchedItem = null;
