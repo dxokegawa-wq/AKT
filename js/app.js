@@ -670,6 +670,7 @@ async function exportToExcelAll() {
 
       const storeAnswers = state.answers[storeName] || {};
       let matchCount = 0; // マッチ件数カウント用
+      const matchedRows = []; // 2パス書き込み用の配列
       
       // === シート内の「点数」「コメント」の列（位置）を自動検出する ===
       let scoreColIndex = 4; // デフォルトD列
@@ -707,7 +708,7 @@ async function exportToExcelAll() {
 
         // 行内のすべてのセルをスキャンして質問文を探す
         row.eachCell((cell, colNumber) => {
-          if (matchedItem) return; // すでに見つかっていればスキップ
+          if (matchedItem) return;
 
           let cellText = '';
           if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
@@ -735,27 +736,45 @@ async function exportToExcelAll() {
         });
         
         if (matchedItem) {
-          matchCount++; // マッチした件数をカウント
-          const ans = storeAnswers[matchedItem.id] || {};
+          matchCount++;
           
-          // 点数を書き込む列が、質問文の列と同じ（または左）になって質問を上書きしてしまうのを防ぐ
-          let targetScoreCol = scoreColIndex;
-          let targetCommentCol = commentColIndex;
+          // 結合セルを安全にスキップするロジック（スレーブセルへの書き込みによる結合破壊を防ぐ）
+          let targetScoreCol = matchedColNumber + 1;
+          while (true) {
+            const c = row.getCell(targetScoreCol);
+            // ExcelJS.ValueType.Merge は 1
+            if (c && c.type === 1) {
+              targetScoreCol++;
+            } else {
+              break;
+            }
+          }
           
-          if (targetScoreCol <= matchedColNumber) {
-            targetScoreCol = matchedColNumber + 1; // 必ず質問文の右隣の列にする
-          }
-          if (targetCommentCol <= targetScoreCol) {
-            targetCommentCol = targetScoreCol + 1;
-          }
+          matchedRows.push({
+            row: row,
+            matchedItem: matchedItem,
+            requiredCol: targetScoreCol
+          });
+        }
+      });
+      
+      // シート内で最も右にある「安全な列」を点数の列として統一する（結合忘れによる列ズレ防止）
+      let finalScoreCol = scoreColIndex;
+      for (const m of matchedRows) {
+        if (m.requiredCol > finalScoreCol) {
+          finalScoreCol = m.requiredCol;
+        }
+      }
+      let finalCommentCol = finalScoreCol + 1;
 
-          // 点数とコメントを書き込む
-          if (ans.score !== undefined) {
-            row.getCell(targetScoreCol).value = ans.score;
-          }
-          if (ans.comment) {
-            row.getCell(targetCommentCol).value = ans.comment;
-          }
+      // 2パス目：確定した統一列に点数とコメントを書き込む
+      matchedRows.forEach(m => {
+        const ans = storeAnswers[m.matchedItem.id] || {};
+        if (ans.score !== undefined) {
+          m.row.getCell(finalScoreCol).value = ans.score;
+        }
+        if (ans.comment) {
+          m.row.getCell(finalCommentCol).value = ans.comment;
         }
       });
       
