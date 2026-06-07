@@ -76,6 +76,7 @@ const dateSelect = document.getElementById('date-select');
 const editionSelect = document.getElementById('edition-select');
 const evaluatorInput = document.getElementById('evaluator-name');
 const btnStart = document.getElementById('btn-start');
+const reviewerPasswordInput = document.getElementById('reviewer-password-input');
 const routeCount = document.getElementById('route-count');
 const routePreviewList = document.getElementById('route-preview-list');
 
@@ -127,6 +128,8 @@ const adminCategoriesContainer = document.getElementById('admin-categories-conta
 const btnAddCategory = document.getElementById('btn-add-category');
 const btnSaveAdmin = document.getElementById('btn-save-admin');
 const btnResetAdmin = document.getElementById('btn-reset-admin');
+const adminReviewerPasswordInput = document.getElementById('admin-reviewer-password-input');
+const btnSaveReviewerPassword = document.getElementById('btn-save-reviewer-password');
 
 // Initialize
 async function init() {
@@ -154,7 +157,55 @@ async function init() {
   renderRoutePreview();
 
   // Events
-  btnStart.addEventListener('click', startScoringSequence);
+  btnStart.addEventListener('click', async () => {
+    if (!dateSelect.value) { alert('審査日を選択してください'); return; }
+    if (!evaluatorInput.value) { alert('審査員名を入力してください'); return; }
+    if (appStores.length === 0) { alert('巡回する店舗が設定されていません'); return; }
+    
+    const enteredPassword = reviewerPasswordInput.value.trim();
+    if (!enteredPassword) { alert('事前に共有された「審査開始パスワード」を入力してください'); return; }
+
+    btnStart.disabled = true;
+    btnStart.textContent = 'パスワード確認中...';
+
+    try {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ action: "load", onlyPassword: true })
+      });
+      const data = await res.json();
+      
+      if (data.status === "success" && data.password === enteredPassword) {
+        state.date = dateSelect.value;
+        state.edition = editionSelect.value;
+        state.evaluator = evaluatorInput.value;
+        state.routeIndex = 0;
+        
+        appStores.forEach(s => { 
+          state.answers[s] = {
+            storeComment: '',
+            staffName: '',
+            staffPosition: '',
+            staffReason: ''
+          }; 
+        });
+
+        await saveStateToIDB();
+        loadStoreScoring();
+        switchScreen('scoring');
+      } else {
+        alert("パスワードが間違っています。本部に最新のパスワードを確認してください。");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("通信エラーが発生しました。インターネットの接続状況を確認してください。");
+    } finally {
+      btnStart.disabled = false;
+      btnStart.textContent = '巡回審査を開始する';
+    }
+  });
+
   btnPrevStore.addEventListener('click', handleStorePrevious);
   btnNextStore.addEventListener('click', () => handleStoreCompletion(false));
   btnFinish.addEventListener('click', () => handleStoreCompletion(true));
@@ -176,6 +227,37 @@ async function init() {
   btnAddCategory.addEventListener('click', adminAddCategory);
   btnSaveAdmin.addEventListener('click', saveAdminData);
   btnResetAdmin.addEventListener('click', resetAdminData);
+
+  if (btnSaveReviewerPassword) {
+    btnSaveReviewerPassword.addEventListener('click', async () => {
+      const newPw = adminReviewerPasswordInput.value.trim();
+      if (!newPw) { alert('新しいパスワードを入力してください'); return; }
+      
+      btnSaveReviewerPassword.disabled = true;
+      btnSaveReviewerPassword.textContent = '保存中...';
+      
+      try {
+        const res = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "setPassword", password: newPw })
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          alert("審査員パスワードをクラウドへ保存しました！全端末で即座に有効になります。");
+          adminReviewerPasswordInput.value = '';
+        } else {
+          throw new Error("Invalid response");
+        }
+      } catch (err) {
+        console.error(err);
+        alert("通信エラーが発生しました。");
+      } finally {
+        btnSaveReviewerPassword.disabled = false;
+        btnSaveReviewerPassword.textContent = 'クラウドへ保存';
+      }
+    });
+  }
 }
 
 // Data Management
