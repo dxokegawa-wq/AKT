@@ -56,6 +56,14 @@
         </div>
 
         <button id="btn-start" class="btn btn-primary btn-large mt-4">巡回審査を開始する</button>
+        
+        <hr style="margin: 24px 0; border-color: rgba(255,255,255,0.1);">
+        
+        <div class="hq-section">
+          <h3 style="font-size: 1rem; color: #ccc;">【本部専用機能】</h3>
+          <p class="text-secondary mt-1" style="font-size: 0.85rem;">審査日を選択し、以下のボタンを押すとクラウドから全担当者のデータを合体してExcel出力します。</p>
+          <button id="btn-fetch-and-download" class="btn btn-excel btn-large mt-2">クラウドデータを合体してExcel出力</button>
+        </div>
       </div>
     </main>
 
@@ -99,11 +107,11 @@
     <main id="screen-result" class="screen">
       <div class="card glass text-center">
         <h2>全ルート審査完了</h2>
-        <p class="text-secondary mt-2">お疲れ様でした。すべての店舗の審査が完了しました。</p>
+        <p class="text-secondary mt-2">お疲れ様でした。以下のボタンから採点データを本部に送信してください。</p>
 
         <div class="action-grid mt-4">
-          <button id="btn-download-excel" class="btn btn-excel btn-large">Excel形式で一括出力</button>
-          <button id="btn-back-to-setup" class="btn btn-secondary btn-large">トップに戻る</button>
+          <button id="btn-send-data" class="btn btn-primary btn-large">採点データを本部へ送信</button>
+          <button id="btn-back-to-setup" class="btn btn-secondary btn-large mt-2">トップに戻る</button>
         </div>
       </div>
     </main>
@@ -164,7 +172,7 @@
 
   </div>
 
-  <script src="js/data.js?v=20260604_6"></script>
-  <script src="js/app.js?v=20260604_6"></script>
+  <script src="js/data.js?v=20260607_1"></script>
+  <script src="js/app.js?v=20260607_1"></script>
 </body>
 </html>

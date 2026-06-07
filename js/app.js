@@ -2,6 +2,7 @@
 let appStores = [];
 let appChecklist = [];
 const ADMIN_PASSWORD = "admin";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbysoO004JB0xeGKoG6kdcVXMIMYxoE8gIykK0csI2_sX6pt4EepM9SWOGqKyX5snCy0Ag/exec";
 
 const state = {
   date: '',
@@ -100,8 +101,11 @@ const staffReasonInput = document.getElementById('staff-reason');
 const staffSummarySection = document.getElementById('staff-summary-section');
 
 // Result Screen Elements
-const btnDownloadExcel = document.getElementById('btn-download-excel');
+const btnSendData = document.getElementById('btn-send-data');
 const btnBackToSetup = document.getElementById('btn-back-to-setup');
+
+// HQ Elements
+const btnFetchAndDownload = document.getElementById('btn-fetch-and-download');
 
 // Admin Elements
 const passwordModal = document.getElementById('password-modal');
@@ -155,7 +159,9 @@ async function init() {
   btnNextStore.addEventListener('click', () => handleStoreCompletion(false));
   btnFinish.addEventListener('click', () => handleStoreCompletion(true));
   btnBackToSetup.addEventListener('click', resetApp);
-  btnDownloadExcel.addEventListener('click', exportToExcelAll);
+  
+  if (btnSendData) btnSendData.addEventListener('click', sendDataToCloud);
+  if (btnFetchAndDownload) btnFetchAndDownload.addEventListener('click', fetchAndDownloadExcel);
 
   // Admin Events
   btnOpenAdmin.addEventListener('click', () => { passwordModal.classList.remove('hidden'); adminPasswordInput.value = ''; });
@@ -640,14 +646,111 @@ async function resetApp() {
   switchScreen('setup');
 }
 
-async function exportToExcelAll() {
+async function sendDataToCloud() {
+  btnSendData.disabled = true;
+  btnSendData.textContent = '送信中...';
+  
+  try {
+    let sentCount = 0;
+    for (const storeName of appStores) {
+      const storeAnswers = state.answers[storeName];
+      if (!storeAnswers) continue;
+      
+      // 点数が入力されているかチェック
+      let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && storeAnswers[key].score !== undefined);
+      if (!hasScore && !storeAnswers.storeComment && !storeAnswers.staffName) continue; // 何も入力されていない場合はスキップ
+      
+      const payload = {
+        action: "save",
+        date: state.date,
+        edition: state.edition,
+        evaluator: state.evaluator,
+        storeName: storeName,
+        answers: storeAnswers
+      };
+      
+      await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify(payload)
+      });
+      sentCount++;
+    }
+    
+    if (sentCount === 0) {
+      alert("送信する採点データがありませんでした。");
+    } else {
+      alert("本部へのデータ送信が完了しました！");
+    }
+    btnSendData.textContent = '送信完了！';
+  } catch (err) {
+    console.error(err);
+    alert("送信に失敗しました。電波の良いところで再度お試しください。");
+    btnSendData.textContent = '採点データを本部へ送信';
+    btnSendData.disabled = false;
+  }
+}
+
+async function fetchAndDownloadExcel() {
+  if (appStores.length === 0) {
+    alert("巡回する店舗が設定されていません。管理者設定から店舗を追加してください。");
+    return;
+  }
+  if (!dateSelect.value) {
+    alert("取得したい審査日を選択してください。");
+    return;
+  }
+  
+  btnFetchAndDownload.disabled = true;
+  btnFetchAndDownload.textContent = 'クラウドからデータ取得中...';
+  
+  try {
+    const payload = {
+      action: "load",
+      date: dateSelect.value
+    };
+    
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(payload)
+    });
+    
+    const data = await res.json();
+    if (data.status === "success" && data.answers) {
+      // 取得したデータを現在の state にマージする
+      state.date = dateSelect.value;
+      for (const store in data.answers) {
+        if (!state.answers[store]) state.answers[store] = {};
+        Object.assign(state.answers[store], data.answers[store]);
+      }
+      
+      // 合体したデータでExcel出力
+      btnFetchAndDownload.textContent = 'Excel作成中...';
+      await exportToExcelAll(btnFetchAndDownload);
+      btnFetchAndDownload.textContent = '出力完了！';
+      btnFetchAndDownload.disabled = false;
+    } else {
+      throw new Error("Invalid response");
+    }
+  } catch (err) {
+    console.error(err);
+    alert("データの取得に失敗しました。");
+    btnFetchAndDownload.textContent = 'クラウドデータを合体してExcel出力';
+    btnFetchAndDownload.disabled = false;
+  }
+}
+
+async function exportToExcelAll(btnElement) {
+  if (!btnElement) btnElement = { textContent: '', disabled: false }; // ダミー
+  
   if (appStores.length === 0) {
     alert("出力する店舗データがありません。");
     return;
   }
   
-  btnDownloadExcel.textContent = '出力中...';
-  btnDownloadExcel.disabled = true;
+  btnElement.textContent = '出力中...';
+  btnElement.disabled = true;
 
   try {
     const zip = new JSZip();
@@ -661,9 +764,9 @@ async function exportToExcelAll() {
       if (!response.ok) throw new Error('Template not found');
       templateBuffer = await response.arrayBuffer();
     } catch(e) {
-      alert('「template.xlsx」が見つかりません。アプリのフォルダ内に template.xlsx が配置されているか確認してください。');
-      btnDownloadExcel.textContent = 'Excel形式で一括出力';
-      btnDownloadExcel.disabled = false;
+      alert('「template.xlsx」が見つかりません。アプリのフォルダに template.xlsx を配置しているか確認してください。');
+      btnElement.textContent = 'Excel形式で一括出力';
+      btnElement.disabled = false;
       return;
     }
 
@@ -859,10 +962,10 @@ async function exportToExcelAll() {
     
   } catch(e) {
     console.error(e);
-    alert("エクセル出力中にエラーが発生しました。");
+    alert("Excel出力中にエラーが発生しました。");
   } finally {
-    btnDownloadExcel.textContent = 'Excel形式で一括出力';
-    btnDownloadExcel.disabled = false;
+    btnElement.textContent = 'Excel形式で一括出力';
+    btnElement.disabled = false;
   }
 }
 
