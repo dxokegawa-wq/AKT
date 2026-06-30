@@ -296,6 +296,13 @@ function switchScreen(screenName) {
     headerScoreDiv.classList.add('hidden');
     currentStoreHeader.classList.add('hidden');
   }
+
+  // 結果画面に来るたびに「送信」ボタンの状態を必ず初期化する
+  // （前回の送信成功後にボタンが無効化されたまま残るのを防ぐ）
+  if (screenName === 'result' && btnSendData) {
+    btnSendData.disabled = false;
+    btnSendData.textContent = '採点データを本部へ送信';
+  }
 }
 
 // Route Preview
@@ -769,12 +776,16 @@ async function sendDataToCloud() {
         storeName: storeName,
         answers: storeAnswers
       };
-      
-      await fetch(GAS_URL, {
+
+      console.log(`[送信] ${storeName} へ送信するデータ:`, payload);
+
+      const res = await fetch(GAS_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify(payload)
       });
+      const resJson = await res.json().catch(() => null);
+      console.log(`[送信] ${storeName} のGASレスポンス:`, resJson);
       sentCount++;
     }
     
@@ -784,6 +795,7 @@ async function sendDataToCloud() {
       alert("本部へのデータ送信が完了しました！");
     }
     btnSendData.textContent = '送信完了！';
+    btnSendData.disabled = false; // 再送信できるよう毎回有効化しておく
   } catch (err) {
     console.error(err);
     alert("送信に失敗しました。電波の良いところで再度お試しください。");
@@ -818,9 +830,39 @@ async function fetchAndDownloadExcel() {
     });
     
     const data = await res.json();
+    console.log("[クラウド取得結果] raw data:", data);
+
     if (data.status === "success" && data.answers) {
       // 取得したデータを現在の state にマージする
       state.date = dateSelect.value;
+
+      // デバッグ用：店舗ごとに「クラウドから何件の回答（点数）が返ってきたか」を可視化する
+      const debugLines = [];
+      for (const storeName of appStores) {
+        const cloudAns = data.answers[storeName];
+        if (!cloudAns) {
+          debugLines.push(`${storeName}: クラウドにデータ無し`);
+          continue;
+        }
+        const scoredCount = Object.keys(cloudAns).filter(
+          k => cloudAns[k] && typeof cloudAns[k] === 'object' && cloudAns[k].score !== undefined
+        ).length;
+        debugLines.push(`${storeName}: クラウドから${scoredCount}件の点数を取得`);
+      }
+      console.log("[クラウド取得結果] 店舗別件数:\n" + debugLines.join('\n'));
+
+      const totalScored = debugLines.filter(l => !l.includes('0件') && !l.includes('データ無し')).length;
+      if (totalScored === 0) {
+        alert(
+          "⚠️ クラウドから採点データが1件も取得できませんでした。\n\n" +
+          "【考えられる原因】\n" +
+          "・選んだ審査日が、審査員が送信した日付と違う\n" +
+          "・審査員が「採点データを本部へ送信」をまだ押していない\n" +
+          "・GAS（Googleスプレッドジート）側の保存に問題がある\n\n" +
+          "【店舗別の取得状況】\n" + debugLines.join('\n')
+        );
+      }
+
       for (const store in data.answers) {
         if (!state.answers[store]) state.answers[store] = {};
         Object.assign(state.answers[store], data.answers[store]);
