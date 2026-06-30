@@ -906,7 +906,10 @@ async function exportToExcelAll(btnElement) {
       // === シート内の「点数」「コメント」の列（位置）を自動検出する ===
       let scoreColIndex = 4; // デフォルトD列
       let commentColIndex = 5; // デフォルトE列
-      ws.eachRow((row) => {
+      let scoreFound = false;
+      let commentFound = false;
+      ws.eachRow((row, rowNumber) => {
+        if (rowNumber > 10) return; // ヘッダーは必ず上部にあるため、10行目までしか探さない
         row.eachCell((cell, colNumber) => {
           let text = '';
           if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
@@ -914,8 +917,15 @@ async function exportToExcelAll(btnElement) {
           } else if (cell.value) {
             text = String(cell.value);
           }
-          if (text.includes('点数')) scoreColIndex = colNumber;
-          if (text.includes('コメント')) commentColIndex = colNumber;
+          // 最初に見つけた「点数」「コメント」の列を採用する
+          if (!scoreFound && text.includes('点数')) {
+            scoreColIndex = colNumber;
+            scoreFound = true;
+          }
+          if (!commentFound && text.includes('コメント')) {
+            commentColIndex = colNumber;
+            commentFound = true;
+          }
         });
       });
 
