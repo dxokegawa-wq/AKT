@@ -155,6 +155,7 @@ async function init() {
   }
 
   renderRoutePreview();
+  editionSelect.addEventListener('change', renderRoutePreview);
 
   // Events
   btnStart.addEventListener('click', async () => {
@@ -298,10 +299,22 @@ function switchScreen(screenName) {
 }
 
 // Route Preview
+function getRouteStores() {
+  if (state.edition === 'hall') {
+    return appStores.filter(s => !(s === '本部' || s.includes('本部')));
+  }
+  return appStores;
+}
+
 function renderRoutePreview() {
-  routeCount.textContent = appStores.length;
+  const edition = editionSelect.value;
+  let previewStores = appStores;
+  if (edition === 'hall') {
+    previewStores = appStores.filter(s => !(s === '本部' || s.includes('本部')));
+  }
+  routeCount.textContent = previewStores.length;
   routePreviewList.innerHTML = '';
-  appStores.forEach(s => {
+  previewStores.forEach(s => {
     const li = document.createElement('li');
     li.textContent = s;
     routePreviewList.appendChild(li);
@@ -345,7 +358,8 @@ async function startScoringSequence() {
 }
 
 function getFilteredChecklist() {
-  const storeName = appStores[state.routeIndex];
+  const routeStores = getRouteStores();
+  const storeName = routeStores[state.routeIndex];
   
   if (storeName === '本部' || storeName.includes('本部')) {
     if (state.edition === 'hall') return [];
@@ -360,12 +374,13 @@ function getFilteredChecklist() {
 }
 
 function loadStoreScoring() {
-  const storeName = appStores[state.routeIndex];
+  const routeStores = getRouteStores();
+  const storeName = routeStores[state.routeIndex];
   
   currentStoreHeader.textContent = `現在: ${storeName}`;
-  storeProgressText.textContent = `${storeName} の審査 (${state.routeIndex + 1} / ${appStores.length} 店舗)`;
+  storeProgressText.textContent = `${storeName} の審査 (${state.routeIndex + 1} / ${routeStores.length} 店舗)`;
   
-  if (state.routeIndex < appStores.length - 1) {
+  if (state.routeIndex < routeStores.length - 1) {
     btnNextStore.classList.remove('hidden');
     btnFinish.classList.add('hidden');
   } else {
@@ -389,10 +404,10 @@ function loadStoreScoring() {
   staffPositionInput.value = storeAnswers.staffPosition || '';
   staffReasonInput.value = storeAnswers.staffReason || '';
 
-  if (state.edition === 'backyard') {
-    staffSummarySection.classList.add('hidden');
-  } else {
+  if (state.edition === 'hall') {
     staffSummarySection.classList.remove('hidden');
+  } else {
+    staffSummarySection.classList.add('hidden');
   }
 
   renderCategories();
@@ -408,7 +423,8 @@ function loadStoreScoring() {
 async function handleStorePrevious() {
   if (state.routeIndex > 0) {
     // 戻る前に現在の入力内容を保存する
-    const storeName = appStores[state.routeIndex];
+    const routeStores = getRouteStores();
+    const storeName = routeStores[state.routeIndex];
     const storeAnswers = state.answers[storeName];
     
     storeAnswers.storeComment = storeCommentInput.value;
@@ -425,7 +441,8 @@ async function handleStorePrevious() {
 }
 
 async function handleStoreCompletion(isFinal) {
-  const storeName = appStores[state.routeIndex];
+  const routeStores = getRouteStores();
+  const storeName = routeStores[state.routeIndex];
   const storeAnswers = state.answers[storeName];
   
   storeAnswers.storeComment = storeCommentInput.value;
@@ -529,7 +546,8 @@ function renderQuestions(categoryName) {
   const categoryData = appChecklist.find(c => c.category === categoryName);
   if (!categoryData) return;
 
-  const storeName = appStores[state.routeIndex];
+  const routeStores = getRouteStores();
+  const storeName = routeStores[state.routeIndex];
   const storeAnswers = state.answers[storeName];
 
   categoryData.items.forEach((item, index) => {
@@ -707,7 +725,8 @@ function renderQuestions(categoryName) {
 }
 
 function updateTotalScore() {
-  const storeName = appStores[state.routeIndex];
+  const routeStores = getRouteStores();
+  const storeName = routeStores[state.routeIndex];
   const storeAnswers = state.answers[storeName] || {};
   let total = 0;
   for (const qId in storeAnswers) {
