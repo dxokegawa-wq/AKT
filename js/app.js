@@ -994,19 +994,14 @@ async function exportToExcelAll(btnElement) {
         }
       });
       
-      // シート内で最も右にある「安全な列」を点数の列として統一する
+      // ヘッダー行から取得した点数列とコメント列をそのまま使用する
       let finalScoreCol = scoreColIndex;
-      for (const m of matchedRows) {
-        if (m.requiredCol > finalScoreCol) {
-          finalScoreCol = m.requiredCol;
-        }
-      }
-      let finalCommentCol = finalScoreCol + 1;
+      let finalCommentCol = commentColIndex;
 
       // デバッグ用：書き込んだ列を保持
       storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ (書込先:${finalScoreCol}列目)`);
 
-      // 2パス目：確定した統一列に点数とコメントを書き込む
+      // 2パス目：確定した列に点数とコメントを書き込む
       matchedRows.forEach(m => {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
