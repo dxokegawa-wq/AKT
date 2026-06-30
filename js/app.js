@@ -903,31 +903,9 @@ async function exportToExcelAll(btnElement) {
       let matchCount = 0; // マッチ件数カウント用
       const matchedRows = []; // 2パス書き込み用の配列
       
-      // === シート内の「点数」「コメント」の列（位置）を自動検出する ===
-      let scoreColIndex = 4; // デフォルトD列
-      let commentColIndex = 5; // デフォルトE列
-      let scoreFound = false;
-      let commentFound = false;
-      ws.eachRow((row, rowNumber) => {
-        if (rowNumber > 10) return; // ヘッダーは必ず上部にあるため、10行目までしか探さない
-        row.eachCell((cell, colNumber) => {
-          let text = '';
-          if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
-            text = cell.value.richText.map(rt => rt.text).join('');
-          } else if (cell.value) {
-            text = String(cell.value);
-          }
-          // 最初に見つけた「点数」「コメント」の列を採用する
-          if (!scoreFound && text.includes('点数')) {
-            scoreColIndex = colNumber;
-            scoreFound = true;
-          }
-          if (!commentFound && text.includes('コメント')) {
-            commentColIndex = colNumber;
-            commentFound = true;
-          }
-        });
-      });
+      // N列(14)、O列(15)で固定
+      let scoreColIndex = 14; 
+      let commentColIndex = 15;
 
       // テンプレート内の各行を走査し、質問項目を探す
       ws.eachRow((row, rowNumber) => {
@@ -1016,6 +994,8 @@ async function exportToExcelAll(btnElement) {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
           m.row.getCell(finalScoreCol).value = ans.score;
+        } else {
+          m.row.getCell(finalScoreCol).value = "未入力";
         }
         if (ans.comment) {
           m.row.getCell(finalCommentCol).value = ans.comment;
