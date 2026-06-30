@@ -77,7 +77,7 @@ const checklistData = [
       { id: "q35", text: "事務所の机の上・周辺、パソコン、複合機・電話、ホールコン・モニターはきれいな状態ですか", points: [5, 1, 0], isPriority: true },
       { id: "q36", text: "机の中や棚・書庫の書類・ファイルは整理整頓され、誰が見てもわかりやすいですか", points: [3, 1, 0], isPriority: false },
       { id: "q37", text: "事務所内に余計な荷物が置きっ放しになっておらず、壁面や窓、床面はきれいな状態になっていますか", points: [3, 1, 0], isPriority: false },
-      { id: "q38", text: "金庫室の床や計数機内及び周りがホコリが無くきれいでちきんと整理整頓されていますか", points: [3, 1, 0], isPriority: false },
+      { id: "q38", text: "金庫室の床や計数機内及び周りがホコリが無くきれいできちんと整理整頓されていますか", points: [3, 1, 0], isPriority: false },
       { id: "q39", text: "金庫内は整理整頓され、きれいな状態になっていますか？また不要な物はありませんでしたか", points: [3, 1, 0], isPriority: false },
       { id: "q40", text: "会議室の床、壁、テーブルの上はきれいですか、またモニターの電源は点きっ放しになっていませんか", points: [3, 1, 0], isPriority: false },
       { id: "q41", text: "会議室内のその他のホワイトボードはきれいになっていますか？またペンは無駄に使用してませんか", points: [3, 1, 0], isPriority: false }
@@ -87,7 +87,7 @@ const checklistData = [
     category: "バックヤード部屋他",
     edition: "backyard",
     items: [
-      { id: "q42", text: "賞品倉庫内の景品はキチンと整理整頓され、玉数・賞味期限表示がされていますか", points: [3, 1, 0], isPriority: false },
+      { id: "q42", text: "賞品倉庫内の景品はキチンと整理整頓がされ、玉数・賞味期限表示がされていますか", points: [3, 1, 0], isPriority: false },
       { id: "q43", text: "部備品倉庫内の工具類は整頓され、用途・品名表示がされていますか", points: [3, 1, 0], isPriority: false },
       { id: "q44", text: "販促物倉庫内のポスター・POP類が整理整頓され、用途表示がされていますか", points: [3, 1, 0], isPriority: false },
       { id: "q45", text: "更衣室内の床・ロッカー・鏡などがきれいで、使用者名記・施錠、ロッカー内は整理整頓されていますか ※抜き打ちチェック含む", points: [3, 1, 0], isPriority: false },

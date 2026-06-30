@@ -900,39 +900,108 @@ async function exportToExcelAll(btnElement) {
 
 
       const storeAnswers = state.answers[storeName] || {};
+      const isHQStore = (storeName === '本部' || storeName.includes('本部'));
+      // 本部用シートは本部編(hq)の項目のみ、店舗シートはhq以外の項目のみを対象にする
+      // （「地域清掃活動は月1回～」のように、編をまたいで似た文言の設問が存在し、
+      //   誤って違う編の項目とマッチしてしまうのを防ぐため）
+      const targetChecklist = isHQStore
+        ? appChecklist.filter(cat => cat.edition === 'hq')
+        : appChecklist.filter(cat => cat.edition !== 'hq');
+
+      // 日付を「○月○日（○）」「○○○○年○月○日（○）」形式に変換するヘルパー
+      const formatDateJp = (dateStr, withYear) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return dateStr;
+        const week = ['日', '月', '火', '水', '木', '金', '土'][d.getDay()];
+        return withYear
+          ? `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日（${week}）`
+          : `${d.getMonth() + 1}月${d.getDate()}日（${week}）`;
+      };
+
+      if (!isHQStore) {
+        // ヘッダー：審査日／調査店舗／参加者
+        ws.getCell('C3').value = formatDateJp(state.date, false);
+        // 店舗名は「岩槻本」(I3:J3結合)＋「店」(K3)の2セルに分かれているため、
+        // I3に店舗名そのものを入れ、K3の固定文字「店」は消しておく
+        ws.getCell('I3').value = storeName;
+        ws.getCell('K3').value = '';
+        ws.getCell('N3').value = state.evaluator || '';
+      } else {
+        // 本部用シート：点検日／担当者
+        ws.getCell('K1').value = `　点検日：${formatDateJp(state.date, true)}`;
+        ws.getCell('C3').value = state.evaluator || '';
+      }
+
       let matchCount = 0; // マッチ件数カウント用
       const matchedRows = []; // 2パス書き込み用の配列
-      
-      // N列(14)、O列(15)で固定
-      let scoreColIndex = 14; 
-      let commentColIndex = 15;
+
+      // デフォルト（ヘッダーが見つからない場合の保険）
+      const DEFAULT_SCORE_COL = 14;   // N列
+      const DEFAULT_COMMENT_COL = 15; // O列
+
+      // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
+      const normalize = (str) => {
+        if (!str) return '';
+        // Unicode正規化(NFKC)で全角英数字記号⇔半角、半角カナ⇔全角カナなどの
+        // 表記ゆれをまとめて吸収する（例：％→%、ﾁｪｯｸ→チェック、１→1）
+        let s = str.normalize('NFKC');
+        s = s.replace(/[〜～]/g, '~');
+        return s.replace(/[\s\n\r\t　・、。(),（）「」]/g, '').toLowerCase();
+      };
+
+      // テンプレートには「ホール編」「バックヤード編」「本部編」でスコア列・コメント列の
+      // 実際の位置が異なる（特にコメント欄の位置が編によってズレている）ため、
+      // 固定の列番号ではなく、シート内の「点数」「コメント欄」というラベルセルを
+      // 実際にスキャンして、その時点で有効な列番号を行ごとに割り当てる。
+      const rowScoreCol = {};
+      const rowCommentCol = {};
+      let lastScoreCol = DEFAULT_SCORE_COL;
+      let lastCommentCol = DEFAULT_COMMENT_COL;
+
+      ws.eachRow((row, rowNumber) => {
+        row.eachCell((cell, colNumber) => {
+          let cellText = '';
+          if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
+            cellText = cell.value.richText.map(rt => rt.text).join('');
+          } else if (typeof cell.value === 'string') {
+            cellText = cell.value;
+          }
+          if (!cellText) return;
+
+          // 結合セルの場合は左上(マスター)の列番号を採用する
+          const masterCol = (cell.isMerged && cell.master) ? cell.master.col : colNumber;
+
+          if (cellText.includes('点数')) {
+            lastScoreCol = masterCol;
+          }
+          // 「コメント欄」という単独のラベルのみを対象とする
+          // （「担当者総評コメント欄」のような別目的のラベルは除外）
+          const strippedExact = cellText.trim().replace(/[（）()]/g, '');
+          if (strippedExact === 'コメント欄') {
+            lastCommentCol = masterCol;
+          }
+          // バックヤード編はヘッダーに「コメント欄」と明記されておらず、
+          // 「理由を必ず明記して下さい」という注記がコメント欄の目印になっている
+          if (cellText.includes('理由を必ず明記') || cellText.includes('コメント記入')) {
+            lastCommentCol = masterCol;
+          }
+        });
+        rowScoreCol[rowNumber] = lastScoreCol;
+        rowCommentCol[rowNumber] = lastCommentCol;
+      });
 
       // テンプレート内の各行を走査し、質問項目を探す
       ws.eachRow((row, rowNumber) => {
-        // 店舗名の自動置換（セルの中に「岩槻本店」があれば現在の店舗名に書き換え）
-        row.eachCell((cell, colNumber) => {
-          if (typeof cell.value === 'string' && cell.value.includes('岩槻本店')) {
-             cell.value = cell.value.replace('岩槻本店', storeName);
-          }
-        });
-
-        // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
-        const normalize = (str) => {
-          if (!str) return '';
-          // 全角英数字を半角に、波ダッシュを統一
-          let s = str.replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(ch) {
-            return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
-          });
-          s = s.replace(/[〜～]/g, '~');
-          return s.replace(/[\s\n\r\t　・、。(),（）「」]/g, '').toLowerCase();
-        };
-
         let matchedItem = null;
-        let matchedColNumber = -1;
 
-        // 行内のすべてのセルをスキャンして質問文を探す
+        // 行内のセルをスキャンして質問文を探す
+        // ※A〜C列はアイコン・カテゴリ名・No.が入っており、データ側の項目文に
+        //   付いている【カテゴリ名】等の接頭辞と誤って部分一致することがあるため、
+        //   実際の設問文が入っているD列以降だけを対象にする
         row.eachCell((cell, colNumber) => {
           if (matchedItem) return;
+          if (colNumber < 4) return;
 
           let cellText = '';
           if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
@@ -944,14 +1013,13 @@ async function exportToExcelAll(btnElement) {
           if (cellText) {
             const normCellText = normalize(cellText);
             if (normCellText.length > 5) { 
-              for (const cat of appChecklist) {
+              for (const cat of targetChecklist) {
                 const found = cat.items.find(i => {
                   const normItemText = normalize(i.text);
                   return normCellText.includes(normItemText) || normItemText.includes(normCellText);
                 });
                 if (found) {
                   matchedItem = found;
-                  matchedColNumber = colNumber;
                   break;
                 }
               }
@@ -961,49 +1029,40 @@ async function exportToExcelAll(btnElement) {
         
         if (matchedItem) {
           matchCount++;
-          
-          // 結合セルを安全にスキップするロジック（公式プロパティを使用）
-          let targetScoreCol = matchedColNumber + 1;
-          while (true) {
-            const c = row.getCell(targetScoreCol);
-            // セルが結合されており、かつ自分がマスター（左上）でない場合はスレーブセル
-            if (c && c.isMerged && c.master && c.master.address !== c.address) {
-              targetScoreCol++;
-            } else {
-              break;
-            }
-          }
-          
           matchedRows.push({
             row: row,
+            rowNumber: rowNumber,
             matchedItem: matchedItem,
-            requiredCol: targetScoreCol
+            scoreCol: rowScoreCol[rowNumber] || DEFAULT_SCORE_COL,
+            commentCol: rowCommentCol[rowNumber] || DEFAULT_COMMENT_COL
           });
         }
       });
-      
-      // ヘッダー行から取得した点数列とコメント列をそのまま使用する
-      let finalScoreCol = scoreColIndex;
-      let finalCommentCol = commentColIndex;
 
-      // デバッグ用：書き込んだ列を保持
-      storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ (書込先:${finalScoreCol}列目)`);
+      // デバッグ用：マッチ件数を保持
+      storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ`);
 
-      // 2パス目：確定した列に点数とコメントを書き込む
+      // 2パス目：行ごとに確定した列に点数とコメントを書き込む
       matchedRows.forEach(m => {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
-          m.row.getCell(finalScoreCol).value = ans.score;
+          m.row.getCell(m.scoreCol).value = ans.score;
         } else {
-          m.row.getCell(finalScoreCol).value = "未入力";
+          m.row.getCell(m.scoreCol).value = "未入力";
         }
         if (ans.comment) {
-          m.row.getCell(finalCommentCol).value = ans.comment;
+          m.row.getCell(m.commentCol).value = ans.comment;
+        }
+
+        // 温度・湿度（空調項目）はスコア列の1つ右のセルに書き込む
+        // （テンプレート上、その位置に「メイン温度：℃、湿度：%」という記入欄があるため）
+        if (m.matchedItem.hasTempHumidity && (ans.temperature || ans.humidity)) {
+          const tempCell = m.row.getCell(m.scoreCol + 1);
+          const t = ans.temperature ? `${ans.temperature}℃` : '';
+          const h = ans.humidity ? `${ans.humidity}%` : '';
+          tempCell.value = `メイン温度：${t}　、　湿度：${h}`;
         }
       });
-      
-      // デバッグ用：マッチした件数を保持
-      storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ`);
 
       // === 写真シート ===
       const storePhotos = [];
