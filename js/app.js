@@ -1117,27 +1117,94 @@ async function exportToExcelAll(btnElement) {
       });
 
       // === 担当者総評コメント・輝いていたスタッフの書き込み ===
-      // （これらは設問項目ではなくストア単位の情報なので、matchedRowsとは別に直接セルを指定して書き込む）
       if (!isHQStore) {
         const comment = storeAnswers.storeComment || '';
         const staffName = storeAnswers.staffName || '';
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
 
-        // テンプレートに最初から入っているサンプル文を先にクリアする
-        ws.getCell('E38').value = '';  // ホール編スタッフ理由サンプル「広い敷地内ですが...」
-        ws.getCell('G79').value = '';  // バックヤード編総評コメントサンプル「特に指摘も無く...」
+        // テンプレートのサンプル文を先にクリア
+        ws.getCell('E38').value = '';
+        ws.getCell('G79').value = '';
 
-        // ホール編 担当者総評コメント欄（A36:E36が結合ラベル → F36が記入欄）
         if (comment) ws.getCell('F36').value = comment;
-
-        // バックヤード編 担当者総評コメント欄（A78:D78が結合ラベル → E78が記入欄）
         if (comment) ws.getCell('E78').value = comment;
-
-        // 輝いていたスタッフ（M37=「名前：」ラベル → N37に氏名、P37=「職位：」→Q37に職位、M38=「（理由）」→N38に理由）
         if (staffName) ws.getCell('N37').value = staffName;
         if (staffPosition) ws.getCell('Q37').value = staffPosition;
         if (staffReason) ws.getCell('N38').value = staffReason;
+
+        // === 集計表（R84〜R92）の数式セルに直接値を書き込む ===
+        // Excelの Protected View（保護されたビュー）では数式が再計算されないため、
+        // JavaScript側で計算した値を静的な数値として直接セルに書き込むことで
+        // 「編集を有効にする」を押さなくても正しい数字が表示されるようにする
+
+        const hallCats    = appChecklist.filter(c => c.edition === 'hall');
+        const backCats    = appChecklist.filter(c => c.edition === 'backyard' && c.category !== '改善の取組み');
+        const specialItem = appChecklist.flatMap(c => c.items).find(i => i.id === 'q_special');
+
+        // 各項目の最大点を合算
+        const hallMax    = hallCats.flatMap(c => c.items).reduce((s, i) => s + i.points[0], 0);
+        const backMax    = backCats.flatMap(c => c.items).reduce((s, i) => s + i.points[0], 0);
+        const specialMax = specialItem ? specialItem.points[0] : 10;
+
+        // 実際に入力されたスコアを合算（未入力は0扱い）
+        const hallScore = hallCats.flatMap(c => c.items).reduce((s, i) => {
+          const a = storeAnswers[i.id];
+          return s + (a && a.score !== undefined ? a.score : 0);
+        }, 0);
+        const backScore = backCats.flatMap(c => c.items).reduce((s, i) => {
+          const a = storeAnswers[i.id];
+          return s + (a && a.score !== undefined ? a.score : 0);
+        }, 0);
+        const specialScore = (storeAnswers['q_special'] && storeAnswers['q_special'].score !== undefined)
+          ? storeAnswers['q_special'].score : 0;
+
+        const backTotalMax   = backMax + specialMax;
+        const backTotalScore = backScore + specialScore;
+
+        // ホール・バックヤードの合計セル（数式 SUM(N7:N33) 等を値で上書き）
+        ws.getCell('N34').value = hallScore;
+        ws.getCell('N67').value = backScore;
+        ws.getCell('N70').value = specialScore;
+
+        // 集計表 I列（最大得点）
+        ws.getCell('I87').value = hallMax;
+        ws.getCell('I91').value = backMax;
+        ws.getCell('I92').value = specialMax;
+
+        // J列（除外）= 0
+        ws.getCell('J87').value = 0;
+        ws.getCell('J91').value = 0;
+        ws.getCell('J92').value = 0;
+
+        // K列（基準点 = 最大得点 - 除外）
+        ws.getCell('K87').value = hallMax;
+        ws.getCell('K91').value = backMax;
+        ws.getCell('K92').value = specialMax;
+        ws.getCell('K90').value = backTotalMax;
+
+        // L列（実得点）
+        ws.getCell('L87').value = hallScore;
+        ws.getCell('L91').value = backScore;
+        ws.getCell('L92').value = specialScore;
+        ws.getCell('L90').value = backTotalScore;
+
+        // I90列（バックヤード合算得点）
+        ws.getCell('I90').value = backTotalMax;
+        ws.getCell('J90').value = 0;
+
+        // N列（得点率）※ 0除算防止
+        ws.getCell('N87').value = hallMax    > 0 ? hallScore    / hallMax    : 0;
+        ws.getCell('N91').value = backMax    > 0 ? backScore    / backMax    : 0;
+        ws.getCell('N92').value = specialMax > 0 ? specialScore / specialMax : 0;
+        ws.getCell('N90').value = backTotalMax > 0 ? backTotalScore / backTotalMax : 0;
+
+        // O列（合計点 ＝ 100点満点換算、青マス）
+        const hallPoints = hallMax    > 0 ? Math.round(hallScore    / hallMax    * 100) : 0;
+        const backPoints = backTotalMax > 0 ? Math.round(backTotalScore / backTotalMax * 100) : 0;
+        ws.getCell('O87').value = hallPoints;
+        ws.getCell('O90').value = backPoints;
+        ws.getCell('O85').value = hallPoints + backPoints; // 総合評価合計点（黄マス）
       }
 
       // === 写真シート ===
