@@ -934,18 +934,21 @@ async function exportToExcelAll(btnElement) {
         targetWs = workbook.worksheets[0]; 
       }
 
-      // 該当店舗以外の不要なシートをすべて削除する
+      // 結果資料シートは出力に含めるため残し、それ以外の不要シートのみ削除する
+      let kekkaWs = null;
       const sheetIdsToRemove = [];
       workbook.eachSheet((sheet) => {
-        if (sheet.id !== targetWs.id) {
+        const isTarget = sheet.id === targetWs.id;
+        const isKekka = sheet.name.includes('結果資料');
+        if (!isTarget && !isKekka) {
           sheetIdsToRemove.push(sheet.id);
         }
+        if (isKekka) kekkaWs = sheet;
       });
       sheetIdsToRemove.forEach(id => workbook.removeWorksheet(id));
 
       let ws = targetWs;
-      ws.name = storeName.substring(0, 31); // 残ったシートの名前を現在の店舗名にする
-
+      ws.name = storeName.substring(0, 31); // 採点シートの名前を現在の店舗名にする
 
       const storeAnswers = state.answers[storeName] || {};
       const isHQStore = (storeName === '本部' || storeName.includes('本部'));
@@ -985,10 +988,12 @@ async function exportToExcelAll(btnElement) {
         ws.getCell('I3').value = storeName;
         ws.getCell('K3').value = '';
         ws.getCell('N3').value = state.evaluator || '';
+        // P1に日付シリアル値が残っているためクリアする
+        ws.getCell('P1').value = '';
         // 第○回（G1に書き込み、G81=[F:G1]の数式が参照する）
         if (kaiText) {
           ws.getCell('G1').value = kaiText;
-          ws.getCell('G81').value = kaiText; // 数式が再計算されない環境用に直接も書く
+          ws.getCell('G81').value = kaiText;
         }
       } else {
         // 本部用シート：点検日／担当者
@@ -1233,6 +1238,48 @@ async function exportToExcelAll(btnElement) {
 
         // デバッグ用：計算値を記録
         storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${specialScore}→${backPoints}点`);
+
+        // === 結果資料シートへの書き込み ===
+        if (kekkaWs) {
+          const dateObj = new Date(state.date + 'T00:00:00');
+          const month = dateObj.getMonth() + 1; // 1〜12
+          // 4月=B列(2), 5月=C列(3), ..., 12月=J列(10), 1月=K列(11), 2月=L列(12), 3月=M列(13)
+          const monthCol = month >= 4 ? month - 2 : month + 10;
+          const totalScore = hallPoints + backPoints;
+
+          // 月次スコア表（R7〜R13付近）の店舗行を動的に探す
+          let scoreRow = null;
+          kekkaWs.eachRow((row, rn) => {
+            if (scoreRow || rn < 6 || rn > 16) return;
+            let v = row.getCell(1).value;
+            if (v && v.richText) v = v.richText.map(rt => rt.text).join('');
+            if (typeof v === 'string' && v.trim() === storeName) scoreRow = rn;
+          });
+          if (scoreRow && monthCol) {
+            kekkaWs.getRow(scoreRow).getCell(monthCol).value = totalScore;
+          }
+
+          // 店舗別チェック項目分析表（R28〜R45付近）の店舗行を動的に探す
+          let analysisRow = null;
+          kekkaWs.eachRow((row, rn) => {
+            if (analysisRow || rn < 28 || rn > 45) return;
+            let v = row.getCell(1).value;
+            if (v && v.richText) v = v.richText.map(rt => rt.text).join('');
+            if (typeof v === 'string' && v.trim() === storeName) analysisRow = rn;
+          });
+          if (analysisRow) {
+            const hallRate    = hallMax    > 0 ? hallScore    / hallMax    : 0;
+            const backRate    = backMax    > 0 ? backScore    / backMax    : 0;
+            const specialRate = specialMax > 0 ? specialScore / specialMax : 0;
+            const aRow = kekkaWs.getRow(analysisRow);
+            aRow.getCell(2).value = hallRate;     // B: ホール率
+            aRow.getCell(3).value = hallRate;     // C: ホール率（同値、2列見た目のため）
+            aRow.getCell(4).value = backRate;     // D: バックヤード全般率
+            aRow.getCell(5).value = backRate;     // E: 〃
+            aRow.getCell(6).value = specialRate;  // F: 5S率
+            aRow.getCell(7).value = specialRate;  // G: 〃
+          }
+        }
       }
 
       // === 写真シート ===
