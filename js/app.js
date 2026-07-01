@@ -1205,6 +1205,9 @@ async function exportToExcelAll(btnElement) {
         ws.getCell('O87').value = hallPoints;
         ws.getCell('O90').value = backPoints;
         ws.getCell('O85').value = hallPoints + backPoints; // 総合評価合計点（黄マス）
+
+        // デバッグ用：計算値を記録
+        storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${specialScore}→${backPoints}点`);
       }
 
       // === 写真シート ===
