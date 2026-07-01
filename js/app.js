@@ -1115,6 +1115,10 @@ async function exportToExcelAll(btnElement) {
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
 
+        // テンプレートに最初から入っているサンプル文を先にクリアする
+        ws.getCell('E38').value = '';  // ホール編スタッフ理由サンプル「広い敷地内ですが...」
+        ws.getCell('G79').value = '';  // バックヤード編総評コメントサンプル「特に指摘も無く...」
+
         // ホール編 担当者総評コメント欄（A36:E36が結合ラベル → F36が記入欄）
         if (comment) ws.getCell('F36').value = comment;
 
