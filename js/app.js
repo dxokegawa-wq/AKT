@@ -1065,6 +1065,9 @@ async function exportToExcelAll(btnElement) {
         row.eachCell((cell, colNumber) => {
           if (matchedItem) return;
           if (colNumber < 4) return;
+          // 結合セルのスレーブ（左上のマスター以外）はスキップ
+          // （q26の空調行がD32:D33で結合されており、両行でマッチして2行書き込まれるのを防ぐ）
+          if (cell.isMerged && cell.master.address !== cell.address) return;
 
           let cellText = '';
           if (cell.value && typeof cell.value === 'object' && cell.value.richText) {
