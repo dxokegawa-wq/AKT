@@ -915,6 +915,95 @@ async function exportToExcelAll(btnElement) {
       return;
     }
 
+    // ── 全店舗スコアの事前計算（結果資料の全店表示・順位・色付けに使用）──
+    const _hallCats    = appChecklist.filter(c => c.edition === 'hall');
+    const _backCats    = appChecklist.filter(c => c.edition === 'backyard' && c.category !== '改善の取組み');
+    const _specialItem = appChecklist.flatMap(c => c.items).find(i => i.id === 'q_special');
+    const _hqCats      = appChecklist.filter(c => c.edition === 'hq');
+    const _hallMax    = _hallCats.flatMap(c => c.items).reduce((s, i) => s + i.points[0], 0);
+    const _backMax    = _backCats.flatMap(c => c.items).reduce((s, i) => s + i.points[0], 0);
+    const _specialMax = _specialItem ? _specialItem.points[0] : 10;
+    const _hqItemMax  = _hqCats.flatMap(c => c.items).length; // 各項目1点
+
+    const allStoreCache = {}; // storeName → {total, hallRate, backRate, specialRate, isHQ}
+    for (const sName of appStores) {
+      const ans = state.answers[sName] || {};
+      const isHQ = sName === '本部' || sName.includes('本部');
+      if (isHQ) {
+        const hqScore = _hqCats.flatMap(c => c.items)
+          .reduce((s, i) => s + ((ans[i.id]?.score ?? null) !== null ? ans[i.id].score : 0), 0);
+        allStoreCache[sName] = {
+          total: _hqItemMax > 0 ? Math.round(hqScore / _hqItemMax * 100) : 0,
+          hallRate: null, backRate: null, specialRate: null, isHQ: true
+        };
+      } else {
+        const hallScore = _hallCats.flatMap(c => c.items)
+          .reduce((s, i) => s + (ans[i.id]?.score !== undefined ? ans[i.id].score : 0), 0);
+        const backScore = _backCats.flatMap(c => c.items)
+          .reduce((s, i) => s + (ans[i.id]?.score !== undefined ? ans[i.id].score : 0), 0);
+        const specialScore = ans['q_special']?.score ?? 0;
+        const backTotalMax   = _backMax + _specialMax;
+        const backTotalScore = backScore + specialScore;
+        const hallP  = _hallMax > 0    ? Math.round(hallScore    / _hallMax    * 100) : 0;
+        const backP  = backTotalMax > 0 ? Math.round(backTotalScore / backTotalMax * 100) : 0;
+        allStoreCache[sName] = {
+          total:       hallP + backP,
+          hallRate:    _hallMax    > 0 ? hallScore    / _hallMax    : 0,
+          backRate:    _backMax    > 0 ? backScore    / _backMax    : 0,
+          specialRate: _specialMax > 0 ? specialScore / _specialMax : 0,
+          isHQ: false
+        };
+      }
+    }
+
+    // 非HQ店舗のみ順位計算（同率考慮）
+    const _ranked = Object.entries(allStoreCache)
+      .filter(([, d]) => !d.isHQ)
+      .map(([sName, d]) => ({ sName, total: d.total }))
+      .sort((a, b) => b.total - a.total);
+
+    const _maxScore = _ranked[0]?.total ?? 0;
+    const _minScore = _ranked[_ranked.length - 1]?.total ?? 0;
+
+    // storeName → { rank: number, argb: string }
+    const _rankInfo = {};
+    let _curRank = 0, _prevTotal = null;
+    for (let i = 0; i < _ranked.length; i++) {
+      const { sName, total } = _ranked[i];
+      if (total !== _prevTotal) { _curRank = i + 1; _prevTotal = total; }
+      _rankInfo[sName] = { rank: _curRank };
+      // 色（1位=赤優先、ビリ=灰、それ以外=青）
+      if (total === _maxScore)       _rankInfo[sName].argb = 'FFFF0000'; // 赤
+      else if (total === _minScore)  _rankInfo[sName].argb = 'FF808080'; // 灰
+      else                           _rankInfo[sName].argb = 'FF4472C4'; // 青
+    }
+
+    // 結果資料 月列ヘルパー（4月=col2, 5月=col3, … 12月=col10, 1月=col11, … 3月=col13）
+    const _getMonthCol = (dateStr) => {
+      const d = new Date(dateStr + 'T00:00:00');
+      const m = d.getMonth() + 1;
+      return m >= 4 ? m - 2 : m + 10;
+    };
+    const _monthCol = _getMonthCol(state.date);
+
+    // 結果資料 店舗行検索ヘルパー
+    const _findRow = (ws, minR, maxR, targetName) => {
+      let found = null;
+      ws.eachRow((row, rn) => {
+        if (found || rn < minR || rn > maxR) return;
+        let v = row.getCell(1).value;
+        if (v?.richText) v = v.richText.map(rt => rt.text).join('');
+        if (typeof v === 'string' && v.trim() === targetName) found = rn;
+      });
+      return found;
+    };
+
+    // セル塗りつぶし適用ヘルパー（白文字・太字）
+    const _applyColor = (cell, argb) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+      cell.font = { ...(cell.font || {}), color: { argb: 'FFFFFFFF' }, bold: true };
+    };
+
     for (const storeName of appStores) {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(templateBuffer);
@@ -1239,45 +1328,36 @@ async function exportToExcelAll(btnElement) {
         // デバッグ用：計算値を記録
         storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${specialScore}→${backPoints}点`);
 
-        // === 結果資料シートへの書き込み ===
-        if (kekkaWs) {
-          const dateObj = new Date(state.date + 'T00:00:00');
-          const month = dateObj.getMonth() + 1; // 1〜12
-          // 4月=B列(2), 5月=C列(3), ..., 12月=J列(10), 1月=K列(11), 2月=L列(12), 3月=M列(13)
-          const monthCol = month >= 4 ? month - 2 : month + 10;
-          const totalScore = hallPoints + backPoints;
-
-          // 月次スコア表（R7〜R13付近）の店舗行を動的に探す
-          let scoreRow = null;
-          kekkaWs.eachRow((row, rn) => {
-            if (scoreRow || rn < 6 || rn > 16) return;
-            let v = row.getCell(1).value;
-            if (v && v.richText) v = v.richText.map(rt => rt.text).join('');
-            if (typeof v === 'string' && v.trim() === storeName) scoreRow = rn;
-          });
-          if (scoreRow && monthCol) {
-            kekkaWs.getRow(scoreRow).getCell(monthCol).value = totalScore;
-          }
-
-          // 店舗別チェック項目分析表（R28〜R45付近）の店舗行を動的に探す
-          let analysisRow = null;
-          kekkaWs.eachRow((row, rn) => {
-            if (analysisRow || rn < 28 || rn > 45) return;
-            let v = row.getCell(1).value;
-            if (v && v.richText) v = v.richText.map(rt => rt.text).join('');
-            if (typeof v === 'string' && v.trim() === storeName) analysisRow = rn;
-          });
-          if (analysisRow) {
-            const hallRate    = hallMax    > 0 ? hallScore    / hallMax    : 0;
-            const backRate    = backMax    > 0 ? backScore    / backMax    : 0;
-            const specialRate = specialMax > 0 ? specialScore / specialMax : 0;
-            const aRow = kekkaWs.getRow(analysisRow);
-            aRow.getCell(2).value = hallRate;     // B: ホール率
-            aRow.getCell(3).value = hallRate;     // C: ホール率（同値、2列見た目のため）
-            aRow.getCell(4).value = backRate;     // D: バックヤード全般率
-            aRow.getCell(5).value = backRate;     // E: 〃
-            aRow.getCell(6).value = specialRate;  // F: 5S率
-            aRow.getCell(7).value = specialRate;  // G: 〃
+        // === 結果資料シートへの書き込み（全店分・色付き） ===
+        if (kekkaWs && _monthCol) {
+          for (const [sName, sData] of Object.entries(allStoreCache)) {
+            // 点数表（R6〜R16）: 今月の合計点 + ランク色
+            const scoreRow = _findRow(kekkaWs, 6, 16, sName);
+            if (scoreRow) {
+              const cell = kekkaWs.getRow(scoreRow).getCell(_monthCol);
+              cell.value = sData.total;
+              if (_rankInfo[sName]) _applyColor(cell, _rankInfo[sName].argb);
+            }
+            // 順位表（R17〜R27）: 今月の順位番号 + ランク色
+            const rankRow = _findRow(kekkaWs, 17, 27, sName);
+            if (rankRow && _rankInfo[sName]) {
+              const cell = kekkaWs.getRow(rankRow).getCell(_monthCol);
+              cell.value = _rankInfo[sName].rank;
+              _applyColor(cell, _rankInfo[sName].argb);
+            }
+            // 分析表（R28〜R45）: ホール率・BK全般率・5S率
+            if (!sData.isHQ) {
+              const analysisRow = _findRow(kekkaWs, 28, 45, sName);
+              if (analysisRow) {
+                const aRow = kekkaWs.getRow(analysisRow);
+                aRow.getCell(2).value = sData.hallRate;
+                aRow.getCell(3).value = sData.hallRate;
+                aRow.getCell(4).value = sData.backRate;
+                aRow.getCell(5).value = sData.backRate;
+                aRow.getCell(6).value = sData.specialRate;
+                aRow.getCell(7).value = sData.specialRate;
+              }
+            }
           }
         }
       }
