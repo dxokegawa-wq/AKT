@@ -918,6 +918,10 @@ async function exportToExcelAll(btnElement) {
     for (const storeName of appStores) {
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(templateBuffer);
+
+      // Excelが開いたとき、N70（5S得点集計）などの数式セルを
+      // 強制的に再計算させる（これがないと書き込んだスコアが数式結果に反映されない）
+      workbook.calcProperties = { fullCalcOnLoad: true };
       
       // シート名が店舗名を含むものがあればそれを使用、無ければ最初のシートを使用
       let targetWs = null;
@@ -1091,6 +1095,11 @@ async function exportToExcelAll(btnElement) {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
           m.row.getCell(m.scoreCol).value = ans.score;
+          // q_special（改善の取組み）はN70に集計セル（数式）があるため、
+          // そこにも直接値を書き込んでおく（Excelの数式再計算を待たずに結果資料が参照できるよう）
+          if (m.matchedItem.id === 'q_special') {
+            ws.getRow(m.rowNumber + 1).getCell(m.scoreCol).value = ans.score;
+          }
         } else {
           m.row.getCell(m.scoreCol).value = "未入力";
         }
