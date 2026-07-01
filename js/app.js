@@ -1099,7 +1099,6 @@ async function exportToExcelAll(btnElement) {
         }
 
         // 温度・湿度（空調項目）はスコア列の1つ右のセルに書き込む
-        // （テンプレート上、その位置に「メイン温度：℃、湿度：%」という記入欄があるため）
         if (m.matchedItem.hasTempHumidity && (ans.temperature || ans.humidity)) {
           const tempCell = m.row.getCell(m.scoreCol + 1);
           const t = ans.temperature ? `${ans.temperature}℃` : '';
@@ -1107,6 +1106,26 @@ async function exportToExcelAll(btnElement) {
           tempCell.value = `メイン温度：${t}　、　湿度：${h}`;
         }
       });
+
+      // === 担当者総評コメント・輝いていたスタッフの書き込み ===
+      // （これらは設問項目ではなくストア単位の情報なので、matchedRowsとは別に直接セルを指定して書き込む）
+      if (!isHQStore) {
+        const comment = storeAnswers.storeComment || '';
+        const staffName = storeAnswers.staffName || '';
+        const staffPosition = storeAnswers.staffPosition || '';
+        const staffReason = storeAnswers.staffReason || '';
+
+        // ホール編 担当者総評コメント欄（A36:E36が結合ラベル → F36が記入欄）
+        if (comment) ws.getCell('F36').value = comment;
+
+        // バックヤード編 担当者総評コメント欄（A78:D78が結合ラベル → E78が記入欄）
+        if (comment) ws.getCell('E78').value = comment;
+
+        // 輝いていたスタッフ（M37=「名前：」ラベル → N37に氏名、P37=「職位：」→Q37に職位、M38=「（理由）」→N38に理由）
+        if (staffName) ws.getCell('N37').value = staffName;
+        if (staffPosition) ws.getCell('Q37').value = staffPosition;
+        if (staffReason) ws.getCell('N38').value = staffReason;
+      }
 
       // === 写真シート ===
       const storePhotos = [];
