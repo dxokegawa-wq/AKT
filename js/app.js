@@ -765,8 +765,8 @@ async function sendDataToCloud() {
       if (!storeAnswers) continue;
       
       // 点数が入力されているかチェック
-      let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && storeAnswers[key].score !== undefined);
-      if (!hasScore && !storeAnswers.storeComment && !storeAnswers.staffName) continue; // 何も入力されていない場合はスキップ
+      let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && typeof storeAnswers[key] === 'object' && storeAnswers[key].score !== undefined);
+      if (!hasScore && !storeAnswers.storeComment && !storeAnswers.staffName) continue;
       
       const payload = {
         action: "save",
@@ -791,15 +791,17 @@ async function sendDataToCloud() {
     
     if (sentCount === 0) {
       alert("送信する採点データがありませんでした。");
+      btnSendData.textContent = '採点データを本部へ送信';
     } else {
-      alert("本部へのデータ送信が完了しました！");
+      alert(`${sentCount}店舗のデータを本部へ送信しました！`);
+      btnSendData.textContent = '再送信する';
     }
-    btnSendData.textContent = '送信完了！';
-    btnSendData.disabled = false; // 再送信できるよう毎回有効化しておく
   } catch (err) {
     console.error(err);
-    alert("送信に失敗しました。電波の良いところで再度お試しください。");
+    alert("送信に失敗しました。電波の良いところで再度お試しください。\n\nエラー: " + err.message);
     btnSendData.textContent = '採点データを本部へ送信';
+  } finally {
+    // 成功・失敗・例外 どのパスを通っても必ずボタンを有効化する
     btnSendData.disabled = false;
   }
 }
