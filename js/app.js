@@ -967,14 +967,29 @@ async function exportToExcelAll(btnElement) {
           : `${d.getMonth() + 1}月${d.getDate()}日（${week}）`;
       };
 
+      // 第○回の算出（7月2026=172回 を基準に月ごとに+1）
+      const calcKaiNum = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'T00:00:00');
+        if (isNaN(d.getTime())) return '';
+        const month = d.getMonth() + 1; // 1-12
+        const year  = d.getFullYear();
+        return 172 + (month - 7) + (year - 2026) * 12;
+      };
+      const kaiNum = calcKaiNum(state.date);
+      const kaiText = kaiNum !== '' ? `第 ${kaiNum} 回　` : '';
+
       if (!isHQStore) {
         // ヘッダー：審査日／調査店舗／参加者
         ws.getCell('C3').value = formatDateJp(state.date, false);
-        // 店舗名は「岩槻本」(I3:J3結合)＋「店」(K3)の2セルに分かれているため、
-        // I3に店舗名そのものを入れ、K3の固定文字「店」は消しておく
         ws.getCell('I3').value = storeName;
         ws.getCell('K3').value = '';
         ws.getCell('N3').value = state.evaluator || '';
+        // 第○回（G1に書き込み、G81=[F:G1]の数式が参照する）
+        if (kaiText) {
+          ws.getCell('G1').value = kaiText;
+          ws.getCell('G81').value = kaiText; // 数式が再計算されない環境用に直接も書く
+        }
       } else {
         // 本部用シート：点検日／担当者
         ws.getCell('K1').value = `　点検日：${formatDateJp(state.date, true)}`;
@@ -1090,13 +1105,20 @@ async function exportToExcelAll(btnElement) {
       // デバッグ用：マッチ件数を保持
       storeMatchCounts.push(`${storeName}: ${matchCount}件マッチ`);
 
+      // 同一設問が複数行にマッチした場合（q26空調など行結合で2行マッチ）は最初の1件のみ使用
+      const seenIds = new Set();
+      const uniqueMatchedRows = matchedRows.filter(m => {
+        if (seenIds.has(m.matchedItem.id)) return false;
+        seenIds.add(m.matchedItem.id);
+        return true;
+      });
+
       // 2パス目：行ごとに確定した列に点数とコメントを書き込む
-      matchedRows.forEach(m => {
+      uniqueMatchedRows.forEach(m => {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
           m.row.getCell(m.scoreCol).value = ans.score;
-          // q_special（改善の取組み）はN70に集計セル（数式）があるため、
-          // そこにも直接値を書き込んでおく（Excelの数式再計算を待たずに結果資料が参照できるよう）
+          // q_special（改善の取組み）はN70に集計セル（数式）があるため直接書き込む
           if (m.matchedItem.id === 'q_special') {
             ws.getRow(m.rowNumber + 1).getCell(m.scoreCol).value = ans.score;
           }
