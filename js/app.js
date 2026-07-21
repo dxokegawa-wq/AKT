@@ -1387,21 +1387,26 @@ async function exportToExcelAll(btnElement) {
       // === 結果資料シートへの書き込み（全店分・色付き） ===
       // 店舗用・本部用のどちらのExcelを出力した場合も、結果資料へ同じ集計結果を反映する
       if (kekkaWs && _monthCol) {
-        // テンプレート上の既存色を見本として流用する
-        const cloneStyle = (srcCell, destCell) => {
-          if (!srcCell || !destCell) return;
-          if (srcCell.fill) destCell.fill = JSON.parse(JSON.stringify(srcCell.fill));
-          if (srcCell.font) destCell.font = JSON.parse(JSON.stringify(srcCell.font));
-        };
-        const scoreStyleSamples = {
-          red:  kekkaWs.getCell('B7'),
-          gray: kekkaWs.getCell('B8'),
-          blue: kekkaWs.getCell('B9')
-        };
-        const rankStyleSamples = {
-          red:  kekkaWs.getCell('B20'),
-          gray: kekkaWs.getCell('B21'),
-          blue: kekkaWs.getCell('B22')
+        // 結果資料の色を明示指定する。
+        // 見本セルのコピーはExcelJSでテーマ色が失われる場合があるため使用しない。
+        const applyResultColor = (cell, colorKey) => {
+          const colors = {
+            red:  { fill: 'FFFF0000', font: 'FFFFFFFF' }, // 1位
+            gray: { fill: 'FFD9D9D9', font: 'FF000000' }, // 最下位・通常
+            blue: { fill: 'FF9DC3E6', font: 'FF000000' }  // 中間順位の同率
+          };
+          const style = colors[colorKey] || colors.gray;
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: style.fill },
+            bgColor: { argb: style.fill }
+          };
+          cell.font = {
+            ...(cell.font || {}),
+            color: { argb: style.font },
+            bold: colorKey === 'red'
+          };
         };
 
         let reflectedScores = 0;
@@ -1414,8 +1419,9 @@ async function exportToExcelAll(btnElement) {
           if (scoreRow) {
             const cell = kekkaWs.getRow(scoreRow).getCell(_monthCol);
             cell.value = sData.total;
-            if (!sData.isHQ && _rankInfo[sName]?.colorKey && scoreStyleSamples[_rankInfo[sName].colorKey]) {
-              cloneStyle(scoreStyleSamples[_rankInfo[sName].colorKey], cell);
+            if (!sData.isHQ) {
+              // 指定なし（単独の中間順位）も通常の灰色
+              applyResultColor(cell, _rankInfo[sName]?.colorKey || 'gray');
             } else if (sData.isHQ) {
               // 本部は順位対象外なので点数のみ反映
               cell.font = { ...(cell.font || {}), bold: true };
@@ -1429,9 +1435,8 @@ async function exportToExcelAll(btnElement) {
             if (rankRow) {
               const cell = kekkaWs.getRow(rankRow).getCell(_monthCol);
               cell.value = _rankInfo[sName].rank;
-              if (_rankInfo[sName].colorKey && rankStyleSamples[_rankInfo[sName].colorKey]) {
-                cloneStyle(rankStyleSamples[_rankInfo[sName].colorKey], cell);
-              }
+              // 指定なし（単独の中間順位）も通常の灰色
+              applyResultColor(cell, _rankInfo[sName].colorKey || 'gray');
               reflectedRanks++;
             }
           }
