@@ -965,17 +965,32 @@ async function exportToExcelAll(btnElement) {
     const _maxScore = _ranked[0]?.total ?? 0;
     const _minScore = _ranked[_ranked.length - 1]?.total ?? 0;
 
-    // storeName → { rank: number, argb: string }
+    // 同点件数を集計
+    const _scoreCounts = {};
+    _ranked.forEach(({ total }) => {
+      _scoreCounts[total] = (_scoreCounts[total] || 0) + 1;
+    });
+
+    // storeName → { rank: number, colorKey: 'red'|'gray'|'blue'|null }
     const _rankInfo = {};
     let _curRank = 0, _prevTotal = null;
     for (let i = 0; i < _ranked.length; i++) {
       const { sName, total } = _ranked[i];
       if (total !== _prevTotal) { _curRank = i + 1; _prevTotal = total; }
-      _rankInfo[sName] = { rank: _curRank };
-      // 色（1位=赤優先、ビリ=灰、それ以外=青）
-      if (total === _maxScore)       _rankInfo[sName].argb = 'FFFF0000'; // 赤
-      else if (total === _minScore)  _rankInfo[sName].argb = 'FF808080'; // 灰
-      else                           _rankInfo[sName].argb = 'FF4472C4'; // 青
+
+      let colorKey = null;
+      if (total === _maxScore) {
+        // 1位（同率1位含む）は赤
+        colorKey = 'red';
+      } else if (total === _minScore) {
+        // 最下位（同率最下位含む）は灰色
+        colorKey = 'gray';
+      } else if ((_scoreCounts[total] || 0) >= 2) {
+        // 1位・最下位以外の同率は青
+        colorKey = 'blue';
+      }
+
+      _rankInfo[sName] = { rank: _curRank, colorKey };
     }
 
     // 結果資料 月列ヘルパー（4月=col2, 5月=col3, … 12月=col10, 1月=col11, … 3月=col13）
@@ -987,13 +1002,31 @@ async function exportToExcelAll(btnElement) {
     const _monthCol = _getMonthCol(state.date);
 
     // 結果資料 店舗行検索ヘルパー
+    // テンプレート側にふりがな・全角空白・「店」の有無などの表記差があっても一致させる
+    const _normalizeStoreName = (value) => {
+      if (value === null || value === undefined) return '';
+      let text = value;
+      if (typeof value === 'object' && value.richText) {
+        text = value.richText.map(rt => rt.text || '').join('');
+      }
+      return String(text)
+        .normalize('NFKC')
+        .replace(/[\s　]/g, '')
+        .replace(/店$/g, '')
+        .toLowerCase();
+    };
+
     const _findRow = (ws, minR, maxR, targetName) => {
+      const target = _normalizeStoreName(targetName);
       let found = null;
       ws.eachRow((row, rn) => {
         if (found || rn < minR || rn > maxR) return;
-        let v = row.getCell(1).value;
-        if (v?.richText) v = v.richText.map(rt => rt.text).join('');
-        if (typeof v === 'string' && v.trim() === targetName) found = rn;
+        const cellName = _normalizeStoreName(row.getCell(1).value);
+        if (!cellName) return;
+        // 完全一致を優先し、テンプレートに読み仮名等が連結されている場合は前方一致で吸収
+        if (cellName === target || cellName.startsWith(target) || target.startsWith(cellName)) {
+          found = rn;
+        }
       });
       return found;
     };
@@ -1328,38 +1361,84 @@ async function exportToExcelAll(btnElement) {
         // デバッグ用：計算値を記録
         storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${specialScore}→${backPoints}点`);
 
-        // === 結果資料シートへの書き込み（全店分・色付き） ===
-        if (kekkaWs && _monthCol) {
-          for (const [sName, sData] of Object.entries(allStoreCache)) {
-            // 点数表（R6〜R16）: 今月の合計点 + ランク色
-            const scoreRow = _findRow(kekkaWs, 6, 16, sName);
-            if (scoreRow) {
-              const cell = kekkaWs.getRow(scoreRow).getCell(_monthCol);
-              cell.value = sData.total;
-              if (_rankInfo[sName]) _applyColor(cell, _rankInfo[sName].argb);
+      }
+
+      // === 結果資料シートへの書き込み（全店分・色付き） ===
+      // 店舗用・本部用のどちらのExcelを出力した場合も、結果資料へ同じ集計結果を反映する
+      if (kekkaWs && _monthCol) {
+        // テンプレート上の既存色を見本として流用する
+        const cloneStyle = (srcCell, destCell) => {
+          if (!srcCell || !destCell) return;
+          if (srcCell.fill) destCell.fill = JSON.parse(JSON.stringify(srcCell.fill));
+          if (srcCell.font) destCell.font = JSON.parse(JSON.stringify(srcCell.font));
+        };
+        const scoreStyleSamples = {
+          red:  kekkaWs.getCell('B7'),
+          gray: kekkaWs.getCell('B8'),
+          blue: kekkaWs.getCell('B9')
+        };
+        const rankStyleSamples = {
+          red:  kekkaWs.getCell('B20'),
+          gray: kekkaWs.getCell('B21'),
+          blue: kekkaWs.getCell('B22')
+        };
+
+        let reflectedScores = 0;
+        let reflectedRanks = 0;
+        let reflectedAnalysis = 0;
+
+        for (const [sName, sData] of Object.entries(allStoreCache)) {
+          // 点数表（7〜13行付近）: 選択月の合計点
+          const scoreRow = _findRow(kekkaWs, 6, 16, sName);
+          if (scoreRow) {
+            const cell = kekkaWs.getRow(scoreRow).getCell(_monthCol);
+            cell.value = sData.total;
+            if (!sData.isHQ && _rankInfo[sName]?.colorKey && scoreStyleSamples[_rankInfo[sName].colorKey]) {
+              cloneStyle(scoreStyleSamples[_rankInfo[sName].colorKey], cell);
+            } else if (sData.isHQ) {
+              // 本部は順位対象外なので点数のみ反映
+              cell.font = { ...(cell.font || {}), bold: true };
             }
-            // 順位表（R17〜R27）: 今月の順位番号 + ランク色
+            reflectedScores++;
+          }
+
+          // 順位表（20〜25行付近）: 店舗のみ順位番号を反映
+          if (!sData.isHQ && _rankInfo[sName]) {
             const rankRow = _findRow(kekkaWs, 17, 27, sName);
-            if (rankRow && _rankInfo[sName]) {
+            if (rankRow) {
               const cell = kekkaWs.getRow(rankRow).getCell(_monthCol);
               cell.value = _rankInfo[sName].rank;
-              _applyColor(cell, _rankInfo[sName].argb);
-            }
-            // 分析表（R28〜R45）: ホール率・BK全般率・5S率
-            if (!sData.isHQ) {
-              const analysisRow = _findRow(kekkaWs, 28, 45, sName);
-              if (analysisRow) {
-                const aRow = kekkaWs.getRow(analysisRow);
-                aRow.getCell(2).value = sData.hallRate;
-                aRow.getCell(3).value = sData.hallRate;
-                aRow.getCell(4).value = sData.backRate;
-                aRow.getCell(5).value = sData.backRate;
-                aRow.getCell(6).value = sData.specialRate;
-                aRow.getCell(7).value = sData.specialRate;
+              if (_rankInfo[sName].colorKey && rankStyleSamples[_rankInfo[sName].colorKey]) {
+                cloneStyle(rankStyleSamples[_rankInfo[sName].colorKey], cell);
               }
+              reflectedRanks++;
+            }
+          }
+
+          // 店舗別チェック項目分析表: 結合セルの左上セル（B/D/F列）へ達成率を反映
+          if (!sData.isHQ) {
+            const analysisRow = _findRow(kekkaWs, 28, 45, sName);
+            if (analysisRow) {
+              const aRow = kekkaWs.getRow(analysisRow);
+              aRow.getCell(2).value = sData.hallRate;
+              aRow.getCell(4).value = sData.backRate;
+              aRow.getCell(6).value = sData.specialRate;
+              reflectedAnalysis++;
             }
           }
         }
+
+        // 半期平均などテンプレート内の数式をExcel起動時に再計算させる
+        workbook.calcProperties = {
+          ...(workbook.calcProperties || {}),
+          fullCalcOnLoad: true,
+          forceFullCalc: true,
+          calcMode: 'auto'
+        };
+
+        storeMatchCounts.push(
+          `  └結果資料: 点数${reflectedScores}店舗・順位${reflectedRanks}店舗・分析${reflectedAnalysis}店舗を反映（${new Date(state.date + 'T00:00:00').getMonth() + 1}月列）`
+        );
       }
 
       // === 写真シート ===
