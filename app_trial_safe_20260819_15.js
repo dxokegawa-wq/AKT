@@ -1,4 +1,4 @@
-// v20260819-25: 本部Excelのコメント枠線と審査回数の月次算出・手動調整を修正
+// v20260819-26: 本部Excelコメント欄の内部縦罫線とコメント行高を修正
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -2111,13 +2111,6 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         }
         return undefined;
       };
-      const setBorderSide = (cell, sideName, side) => {
-        if (!side) return;
-        cell.border = {
-          ...(cell.border || {}),
-          [sideName]: cloneBorderSide(side)
-        };
-      };
       const mergeCellsWithOuterBorder = (startRow, startCol, endRow, endCol) => {
         const master = ws.getCell(startRow, startCol);
         if (master.isMerged) return master;
@@ -2143,17 +2136,27 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
         ws.mergeCells(startRow, startCol, endRow, endCol);
         const mergedMaster = ws.getCell(startRow, startCol);
-        mergedMaster.border = {
-          ...(mergedMaster.border || {}),
-          ...outerBorder
-        };
-        for (let col = startCol; col <= endCol; col++) {
-          setBorderSide(ws.getCell(startRow, col), 'top', outerBorder.top);
-          setBorderSide(ws.getCell(endRow, col), 'bottom', outerBorder.bottom);
-        }
+
+        // ExcelJSは結合セル全体で同じstyle参照を共有するため、単に右罫線を設定すると
+        // 結合範囲内のセルにも縦線が複製される場合がある。各セルのstyleを切り離し、
+        // 外周にだけ罫線を残す。
         for (let row = startRow; row <= endRow; row++) {
-          setBorderSide(ws.getCell(row, startCol), 'left', outerBorder.left);
-          setBorderSide(ws.getCell(row, endCol), 'right', outerBorder.right);
+          for (let col = startCol; col <= endCol; col++) {
+            const cell = ws.getCell(row, col);
+            const border = { ...(cell.border || {}) };
+            delete border.left;
+            delete border.right;
+            delete border.top;
+            delete border.bottom;
+            if (col === startCol && outerBorder.left) border.left = cloneBorderSide(outerBorder.left);
+            if (col === endCol && outerBorder.right) border.right = cloneBorderSide(outerBorder.right);
+            if (row === startRow && outerBorder.top) border.top = cloneBorderSide(outerBorder.top);
+            if (row === endRow && outerBorder.bottom) border.bottom = cloneBorderSide(outerBorder.bottom);
+            cell.style = {
+              ...(cell.style || {}),
+              border
+            };
+          }
         }
         return mergedMaster;
       };
@@ -2182,7 +2185,6 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             vertical: 'top',
             wrapText: true
           };
-          m.row.height = Math.max(Number(m.row.height) || 0, 30);
         }
 
         // 温度・湿度（空調項目）はスコア列の1つ右のセルに書き込む
