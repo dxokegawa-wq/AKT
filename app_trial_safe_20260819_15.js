@@ -1,4 +1,4 @@
-// v20260819-28: 総評コメント結合範囲のテンプレート行高を固定
+// v20260819-29: 2端末送信時に編別総評コメントが空文字で上書きされる問題を修正
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -1017,6 +1017,37 @@ function saveVisibleStoreComments(storeAnswers) {
   }
 }
 
+// ホール端末とバックヤード端末は同じ店舗レコードへ順番に保存されるため、
+// 反対側の未入力キー（空文字）まで送ると、後から送った端末が既存総評を消してしまう。
+// 各端末からは自分の編に属する総評・担当者情報だけを送信する。
+function buildEditionScopedCloudAnswers(storeName, storeAnswers, edition) {
+  const scopedAnswers = { ...(storeAnswers || {}) };
+  if (isHQStoreName(storeName)) return scopedAnswers;
+
+  const legacyComment = String(scopedAnswers.storeComment ?? '');
+  if (edition === 'hall') {
+    if (!String(scopedAnswers.hallStoreComment ?? '').trim() && legacyComment.trim()) {
+      scopedAnswers.hallStoreComment = legacyComment;
+    }
+    delete scopedAnswers.backyardStoreComment;
+    delete scopedAnswers.backyardEvaluator;
+  } else if (edition === 'backyard') {
+    if (!String(scopedAnswers.backyardStoreComment ?? '').trim() && legacyComment.trim()) {
+      scopedAnswers.backyardStoreComment = legacyComment;
+    }
+    delete scopedAnswers.hallStoreComment;
+    delete scopedAnswers.hallEvaluator;
+    // 輝いていたスタッフ欄はホール編のみの入力項目。
+    delete scopedAnswers.staffName;
+    delete scopedAnswers.staffPosition;
+    delete scopedAnswers.staffReason;
+  }
+
+  // 店舗の旧共通キーは編別キーへ移行済み。共通キーを送ると再び上書き原因になる。
+  if (edition === 'hall' || edition === 'backyard') delete scopedAnswers.storeComment;
+  return scopedAnswers;
+}
+
 function loadStoreScoring() {
   const routeStores = getRouteStores();
   const storeName = routeStores[state.routeIndex];
@@ -1574,7 +1605,7 @@ async function sendDataToCloud() {
         edition: state.edition,
         evaluator: state.evaluator,
         storeName: storeName,
-        answers: storeAnswers
+        answers: buildEditionScopedCloudAnswers(storeName, storeAnswers, state.edition)
       };
 
       console.log(`[送信] ${storeName} へ送信するデータ:`, payload);
