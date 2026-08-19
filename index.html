@@ -18,7 +18,7 @@
     <!-- Header -->
     <header class="app-header">
       <div>
-        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260819-24</span></h1>
+        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260819-25</span></h1>
         <div id="current-store-header" class="hidden text-sm text-secondary"></div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
@@ -152,6 +152,22 @@
 
         <!-- Route Settings -->
         <div id="admin-route-view" class="admin-view">
+          <div class="admin-section" style="margin-bottom:18px;">
+            <h3 style="margin-bottom:8px;">審査回数設定</h3>
+            <p class="text-secondary text-sm mb-4">
+              基準年月を基準回数として、翌月以降は毎月1回ずつ加算します。審査中止などで回数がずれた場合は、次回の年月と回数をここで設定してください。
+            </p>
+            <div class="form-group" style="display:flex; gap:10px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:150px;">
+                <label for="admin-inspection-base-month">基準年月</label>
+                <input type="month" id="admin-inspection-base-month">
+              </div>
+              <div style="flex:1; min-width:150px;">
+                <label for="admin-inspection-base-count">基準回数</label>
+                <input type="number" id="admin-inspection-base-count" min="1" step="1" inputmode="numeric">
+              </div>
+            </div>
+          </div>
           <div class="form-group" style="display: flex; gap: 10px;">
             <input type="text" id="new-store-input" placeholder="新しい店舗名">
             <button id="btn-add-store" class="btn btn-primary">追加</button>
@@ -214,7 +230,7 @@
 
   </div>
 
-  <script src="data.js?v=20260819_24"></script>
-  <script src="app_trial_safe_20260819_15.js?v=20260819_24"></script>
+  <script src="data.js?v=20260819_25"></script>
+  <script src="app_trial_safe_20260819_15.js?v=20260819_25"></script>
 </body>
 </html>

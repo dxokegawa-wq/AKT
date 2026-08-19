@@ -1,4 +1,4 @@
-// v20260819-24: 設問コメントの必須条件を強化項目・低評価時だけに修正
+// v20260819-25: 本部Excelのコメント枠線と審査回数の月次算出・手動調整を修正
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -10,6 +10,37 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbysoO004JB0xeGKoG6kdcVX
 const CLOUD_SETTINGS_DATE = "2000-01-01";
 const CLOUD_SETTINGS_STORE = "__AKT_APP_SETTINGS__";
 const CLOUD_SETTINGS_EDITION = "settings";
+const INSPECTION_COUNT_SETTINGS_KEY = "akt_inspection_count_settings_v1";
+const DEFAULT_INSPECTION_COUNT_SETTINGS = Object.freeze({
+  baseYearMonth: "2026-08",
+  baseCount: 173
+});
+let inspectionCountSettings = { ...DEFAULT_INSPECTION_COUNT_SETTINGS };
+
+function normalizeInspectionCountSettings(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const baseYearMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(source.baseYearMonth || ''))
+    ? String(source.baseYearMonth)
+    : DEFAULT_INSPECTION_COUNT_SETTINGS.baseYearMonth;
+  const parsedCount = Number(source.baseCount);
+  const baseCount = Number.isFinite(parsedCount) && parsedCount >= 1
+    ? Math.trunc(parsedCount)
+    : DEFAULT_INSPECTION_COUNT_SETTINGS.baseCount;
+  return { baseYearMonth, baseCount };
+}
+
+// 管理者が指定した基準年月・基準回数から、対象月ごとに1回ずつ加算する。
+function calcInspectionCount(dateStr, settings = inspectionCountSettings) {
+  if (!dateStr) return '';
+  const targetYearMonth = String(dateStr).slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(targetYearMonth)) return '';
+
+  const normalized = normalizeInspectionCountSettings(settings);
+  const [targetYear, targetMonth] = targetYearMonth.split('-').map(Number);
+  const [baseYear, baseMonth] = normalized.baseYearMonth.split('-').map(Number);
+  const monthDifference = (targetYear - baseYear) * 12 + (targetMonth - baseMonth);
+  return normalized.baseCount + monthDifference;
+}
 
 // 月別結果履歴。既存GASのsave/loadを流用し、各月1日を履歴キーとして保存する。
 // 例: 2026年8月の正式結果 → date=2026-08-01 / storeName=__AKT_MONTHLY_RESULT__
@@ -216,6 +247,8 @@ const viewAdminHistory = document.getElementById('admin-history-view');
 const adminRouteList = document.getElementById('admin-route-list');
 const newStoreInput = document.getElementById('new-store-input');
 const btnAddStore = document.getElementById('btn-add-store');
+const adminInspectionBaseMonth = document.getElementById('admin-inspection-base-month');
+const adminInspectionBaseCount = document.getElementById('admin-inspection-base-count');
 
 const adminCategoriesContainer = document.getElementById('admin-categories-container');
 const btnAddCategory = document.getElementById('btn-add-category');
@@ -430,6 +463,7 @@ async function init() {
 function loadData() {
   const savedStores = localStorage.getItem('akt_stores_v2');
   const savedChecklist = localStorage.getItem('akt_checklist_v2');
+  const savedInspectionCountSettings = localStorage.getItem(INSPECTION_COUNT_SETTINGS_KEY);
   
   if (savedStores) {
     appStores = JSON.parse(savedStores);
@@ -441,6 +475,17 @@ function loadData() {
     appChecklist = JSON.parse(savedChecklist);
   } else {
     appChecklist = JSON.parse(JSON.stringify(typeof checklistData !== 'undefined' ? checklistData : []));
+  }
+
+  if (savedInspectionCountSettings) {
+    try {
+      inspectionCountSettings = normalizeInspectionCountSettings(JSON.parse(savedInspectionCountSettings));
+    } catch (err) {
+      console.warn('[審査回数設定] 端末保存値を読み込めないため初期値を使用します', err);
+      inspectionCountSettings = { ...DEFAULT_INSPECTION_COUNT_SETTINGS };
+    }
+  } else {
+    inspectionCountSettings = { ...DEFAULT_INSPECTION_COUNT_SETTINGS };
   }
 }
 
@@ -486,6 +531,7 @@ function ensureAugust2026Checklist() {
 function saveDataToLocal() {
   localStorage.setItem('akt_stores_v2', JSON.stringify(appStores));
   localStorage.setItem('akt_checklist_v2', JSON.stringify(appChecklist));
+  localStorage.setItem(INSPECTION_COUNT_SETTINGS_KEY, JSON.stringify(inspectionCountSettings));
 }
 
 // 管理者設定をクラウドから取得する。
@@ -516,6 +562,10 @@ async function loadAdminSettingsFromCloud() {
       appChecklist = JSON.parse(JSON.stringify(cloudSettings.checklist));
       changed = true;
     }
+    if (cloudSettings.inspectionCountSettings && typeof cloudSettings.inspectionCountSettings === 'object') {
+      inspectionCountSettings = normalizeInspectionCountSettings(cloudSettings.inspectionCountSettings);
+      changed = true;
+    }
 
     if (changed) {
       // 次回オフライン起動時にも直近のクラウド設定を使えるよう端末にもキャッシュする。
@@ -540,8 +590,9 @@ async function saveAdminSettingsToCloud() {
     answers: {
       stores: appStores,
       checklist: appChecklist,
+      inspectionCountSettings,
       updatedAt: new Date().toISOString(),
-      configVersion: 1
+      configVersion: 2
     }
   };
 
@@ -1903,16 +1954,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
           : `${d.getMonth() + 1}月${d.getDate()}日（${week}）`;
       };
 
-      // 第○回の算出（7月2026=172回 を基準に月ごとに+1）
-      const calcKaiNum = (dateStr) => {
-        if (!dateStr) return '';
-        const d = new Date(dateStr + 'T00:00:00');
-        if (isNaN(d.getTime())) return '';
-        const month = d.getMonth() + 1; // 1-12
-        const year  = d.getFullYear();
-        return 172 + (month - 7) + (year - 2026) * 12;
-      };
-      const kaiNum = calcKaiNum(state.date);
+      // 第○回は管理者設定の基準年月・基準回数から月ごとに+1する。
+      const kaiNum = calcInspectionCount(state.date);
       const kaiText = kaiNum !== '' ? `第 ${kaiNum} 回　` : '';
 
       if (!isHQStore) {
@@ -1941,7 +1984,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // デフォルト（ヘッダーが見つからない場合の保険）
       const DEFAULT_SCORE_COL = 14;   // N列
-      const DEFAULT_COMMENT_COL = isHQStore ? 18 : 15; // 店舗はO列、本部はR列
+      // 本部はコメント外枠の左端P列からU列まで結合する。
+      // R列開始だとExcelJSの結合処理でQ列側にも不要な縦罫線が生じる。
+      const DEFAULT_COMMENT_COL = isHQStore ? 16 : 15; // 店舗はO列、本部はP列
 
       // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
       const normalize = (str) => {
@@ -2041,7 +2086,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             matchedItem: matchedItem,
             scoreCol: rowScoreCol[rowNumber] || DEFAULT_SCORE_COL,
             // 見出し文字の位置ではなく、罫線上の実開始列を使用する。
-            // 店舗シートはO列、HQシートはR列。
+            // 店舗シートはO列、HQシートはP列。
             commentCol: DEFAULT_COMMENT_COL
           });
         }
@@ -2785,6 +2830,8 @@ async function saveHistoryEditorToCloud() {
 }
 
 function renderAdminRoute() {
+  adminInspectionBaseMonth.value = inspectionCountSettings.baseYearMonth;
+  adminInspectionBaseCount.value = inspectionCountSettings.baseCount;
   adminRouteList.innerHTML = '';
   appStores.forEach((store, idx) => {
     const li = document.createElement('li');
@@ -2907,6 +2954,15 @@ function adminAddCategory() {
 }
 
 async function saveAdminData() {
+  const baseYearMonth = adminInspectionBaseMonth.value;
+  const baseCount = Number(adminInspectionBaseCount.value);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(baseYearMonth) || !Number.isInteger(baseCount) || baseCount < 1) {
+    alert('審査回数の基準年月と基準回数を正しく入力してください。');
+    adminInspectionBaseMonth.focus();
+    return;
+  }
+  inspectionCountSettings = normalizeInspectionCountSettings({ baseYearMonth, baseCount });
+
   // まず端末へ保存。通信不良でもこの端末では設定を失わない。
   saveDataToLocal();
 
@@ -2926,7 +2982,7 @@ async function saveAdminData() {
   }
 
   if (cloudSaved) {
-    alert("設定を保存しました！\n巡回ルート・採点項目をクラウドへ同期しました。\n他の端末は次回アプリを開いたときに自動反映されます。");
+    alert("設定を保存しました！\n巡回ルート・採点項目・審査回数設定をクラウドへ同期しました。\n他の端末は次回アプリを開いたときに自動反映されます。");
   } else {
     alert("この端末には設定を保存しましたが、クラウド同期に失敗しました。\nインターネット接続を確認して、もう一度『設定を保存』してください。");
   }
@@ -2942,8 +2998,9 @@ async function saveAdminData() {
 
 function resetAdminData() {
   if(confirm('設定を完全にリセットし、初期データ（data.jsの内容）に戻しますか？')) {
-    localStorage.removeItem('akt_stores');
-    localStorage.removeItem('akt_checklist');
+    localStorage.removeItem('akt_stores_v2');
+    localStorage.removeItem('akt_checklist_v2');
+    localStorage.removeItem(INSPECTION_COUNT_SETTINGS_KEY);
     loadData();
     alert('初期データにリセットしました。');
     renderAdminRoute();
