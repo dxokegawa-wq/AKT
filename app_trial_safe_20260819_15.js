@@ -1,4 +1,4 @@
-// v20260819-26: 本部Excelコメント欄の内部縦罫線とコメント行高を修正
+// v20260819-27: 設問コメント出力時の自動折り返しを止め、既定行高を固定
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -2163,6 +2163,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // 2パス目：行ごとに確定した列に点数とコメントを書き込む
       uniqueMatchedRows.forEach(m => {
+        // コメント出力や結合によるExcel側の自動調整を防ぐため、
+        // テンプレートで定義されている元の行高を最後に必ず復元する。
+        const templateRowHeight = Number(m.row.height) || Number(ws.properties.defaultRowHeight) || 15;
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
           m.row.getCell(m.scoreCol).value = ans.score;
@@ -2183,7 +2186,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             ...(commentCell.alignment || {}),
             horizontal: 'left',
             vertical: 'top',
-            wrapText: true
+            wrapText: false
           };
         }
 
@@ -2194,6 +2197,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
           const h = ans.humidity ? `${ans.humidity}%` : '';
           tempCell.value = `メイン温度：${t}　、　湿度：${h}`;
         }
+
+        m.row.height = templateRowHeight;
       });
 
       const setSummaryComment = (address, text, rowNumber, mergeBounds) => {
