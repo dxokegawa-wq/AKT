@@ -1,4 +1,4 @@
-// v20260819-20: 採点カテゴリのタブ切替時に画面先頭へ戻す
+// v20260819-21: Excel結合セルの外周罫線を復元し、総評コメントを中央表示
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -1973,6 +1973,31 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         return true;
       });
 
+      const cloneBorderSide = (side) => side ? JSON.parse(JSON.stringify(side)) : undefined;
+      const mergeCellsWithOuterBorder = (startRow, startCol, endRow, endCol) => {
+        const master = ws.getCell(startRow, startCol);
+        if (master.isMerged) return master;
+
+        const topLeft = ws.getCell(startRow, startCol);
+        const topRight = ws.getCell(startRow, endCol);
+        const bottomLeft = ws.getCell(endRow, startCol);
+        const bottomRight = ws.getCell(endRow, endCol);
+        const outerBorder = {
+          left: cloneBorderSide(topLeft.border?.left || bottomLeft.border?.left),
+          right: cloneBorderSide(topRight.border?.right || bottomRight.border?.right),
+          top: cloneBorderSide(topLeft.border?.top || topRight.border?.top),
+          bottom: cloneBorderSide(bottomLeft.border?.bottom || bottomRight.border?.bottom)
+        };
+
+        ws.mergeCells(startRow, startCol, endRow, endCol);
+        const mergedMaster = ws.getCell(startRow, startCol);
+        mergedMaster.border = {
+          ...(mergedMaster.border || {}),
+          ...outerBorder
+        };
+        return mergedMaster;
+      };
+
       // 2パス目：行ごとに確定した列に点数とコメントを書き込む
       uniqueMatchedRows.forEach(m => {
         const ans = storeAnswers[m.matchedItem.id] || {};
@@ -1985,10 +2010,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         // 見た目だけ広くなっていたコメント欄を、実際に右端(T列)まで結合する。
         const commentEndCol = 20;
         if (m.commentCol <= commentEndCol) {
-          const commentStart = m.row.getCell(m.commentCol);
-          if (!commentStart.isMerged) {
-            ws.mergeCells(m.rowNumber, m.commentCol, m.rowNumber, commentEndCol);
-          }
+          mergeCellsWithOuterBorder(m.rowNumber, m.commentCol, m.rowNumber, commentEndCol);
         }
         if (ans.comment) {
           const commentCell = m.row.getCell(m.commentCol);
@@ -2019,23 +2041,22 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
 
-        const setSummaryComment = (address, text, rowNumber, mergeRange) => {
-          const mergeStart = ws.getCell(address);
-          if (mergeRange && !mergeStart.isMerged) ws.mergeCells(mergeRange);
+        const setSummaryComment = (address, text, rowNumber, mergeBounds) => {
+          if (mergeBounds) mergeCellsWithOuterBorder(...mergeBounds);
           const cell = ws.getCell(address);
           cell.value = text || '';
           cell.alignment = {
             ...(cell.alignment || {}),
-            horizontal: 'left',
-            vertical: 'top',
+            horizontal: 'center',
+            vertical: 'middle',
             wrapText: true
           };
           const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 80) * 18));
           ws.getRow(rowNumber).height = Math.max(Number(ws.getRow(rowNumber).height) || 0, estimatedHeight);
         };
         // テンプレートの見本コメントが入っている実際の記入欄へ編別に出力する。
-        setSummaryComment('F36', hallComment, 36, 'F36:L40');
-        setSummaryComment('E80', backyardComment, 80, 'E80:T81');
+        setSummaryComment('F36', hallComment, 36, [36, 6, 40, 12]);
+        setSummaryComment('E80', backyardComment, 80, [80, 5, 81, 20]);
         if (staffName) ws.getCell('N37').value = staffName;
         if (staffPosition) ws.getCell('Q37').value = staffPosition;
         if (staffReason) ws.getCell('N38').value = staffReason;
