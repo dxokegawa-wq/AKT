@@ -1,4 +1,4 @@
-// v20260819-18: クラウド送信結果を検証し、点数0件での空Excel出力を防止
+// v20260819-20: 採点カテゴリのタブ切替時に画面先頭へ戻す
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -236,6 +236,7 @@ let loadedHistoryRecord = null;
 // Initialize
 async function init() {
   loadData();
+  if (ensureAugust2026Checklist()) saveDataToLocal();
   
   const savedState = await loadStateFromIDB();
   // v8以降で「審査中」と明示保存された場合だけ途中再開する。
@@ -246,6 +247,7 @@ async function init() {
   // 審査中でない場合だけクラウドの最新管理者設定を取得し、PCの変更をスマホへ反映する。
   if (!shouldResume) {
     await loadAdminSettingsFromCloud();
+    if (ensureAugust2026Checklist()) saveDataToLocal();
   }
 
   if (shouldResume) {
@@ -438,6 +440,45 @@ function loadData() {
   } else {
     appChecklist = JSON.parse(JSON.stringify(typeof checklistData !== 'undefined' ? checklistData : []));
   }
+}
+
+// 旧端末キャッシュ／旧クラウド管理者設定が最新版data.jsを上書きしても、
+// 2026年8月から必須となった設問52・53を必ず採点対象へ復元する。
+function ensureAugust2026Checklist() {
+  if (!Array.isArray(appChecklist) || typeof checklistData === 'undefined') return false;
+
+  const masterItems = checklistData.flatMap(cat => cat.items || []);
+  const masterQ7 = masterItems.find(item => item.id === 'q7');
+  const masterStrengthening = masterItems.filter(item => ['q_special', 'q_special_ai'].includes(item.id));
+  let changed = false;
+
+  const currentQ7 = appChecklist.flatMap(cat => cat.items || []).find(item => item.id === 'q7');
+  if (masterQ7 && currentQ7 && currentQ7.text !== masterQ7.text) {
+    currentQ7.text = masterQ7.text;
+    changed = true;
+  }
+
+  appChecklist.forEach(cat => {
+    if (!Array.isArray(cat.items)) return;
+    const filtered = cat.items.filter(item => !['q_special', 'q_special_ai'].includes(item.id));
+    if (filtered.length !== cat.items.length) changed = true;
+    cat.items = filtered;
+  });
+
+  let category = appChecklist.find(cat => cat.edition === 'backyard' && ['強化項目', '改善の取組み'].includes(cat.category));
+  if (!category) {
+    category = { category: '強化項目', edition: 'backyard', items: [] };
+    const hqIndex = appChecklist.findIndex(cat => cat.edition === 'hq');
+    if (hqIndex >= 0) appChecklist.splice(hqIndex, 0, category);
+    else appChecklist.push(category);
+    changed = true;
+  }
+  if (category.category !== '強化項目') {
+    category.category = '強化項目';
+    changed = true;
+  }
+  category.items = masterStrengthening.map(item => JSON.parse(JSON.stringify(item)));
+  return changed;
 }
 
 function saveDataToLocal() {
@@ -1061,12 +1102,12 @@ function renderCategories() {
     const btn = document.createElement('button');
     btn.className = 'tab-btn';
     btn.textContent = cat.category;
-    btn.addEventListener('click', () => selectCategory(cat.category));
+    btn.addEventListener('click', () => selectCategory(cat.category, true));
     categoryTabs.appendChild(btn);
   });
 }
 
-function selectCategory(categoryName) {
+function selectCategory(categoryName, scrollToTop = false) {
   state.currentCategory = categoryName;
   document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.textContent === categoryName) {
@@ -1077,6 +1118,11 @@ function selectCategory(categoryName) {
     }
   });
   renderQuestions(categoryName);
+  if (scrollToTop) {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
 }
 
 function compressImage(file, callback) {
@@ -1380,6 +1426,18 @@ async function sendDataToCloud() {
       // 点数が入力されているかチェック
       let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && typeof storeAnswers[key] === 'object' && storeAnswers[key].score !== undefined);
       if (!hasScore && !storeAnswers.storeComment && !storeAnswers.hallStoreComment && !storeAnswers.backyardStoreComment && !storeAnswers.staffName) continue;
+
+      // GASのload応答はanswersだけを返すため、審査員名もanswers内へ編別に保持する。
+      if (isHQStoreName(storeName)) {
+        storeAnswers.hqEvaluator = state.evaluator || '';
+      } else if (state.edition === 'hall') {
+        storeAnswers.hallEvaluator = state.evaluator || '';
+      } else if (state.edition === 'backyard') {
+        storeAnswers.backyardEvaluator = state.evaluator || '';
+      } else {
+        storeAnswers.hallEvaluator = state.evaluator || '';
+        storeAnswers.backyardEvaluator = state.evaluator || '';
+      }
       
       const payload = {
         action: "save",
@@ -1779,7 +1837,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         ws.getCell('C3').value = formatDateJp(state.date, false);
         ws.getCell('I3').value = storeName;
         ws.getCell('K3').value = '';
-        ws.getCell('N3').value = state.evaluator || '';
+        ws.getCell('N3').value = storeAnswers.hallEvaluator || storeAnswers.evaluatorName || state.evaluator || '';
+        ws.getCell('P3').value = storeAnswers.backyardEvaluator || storeAnswers.evaluatorName || state.evaluator || '';
         // P1に日付シリアル値が残っているためクリアする
         ws.getCell('P1').value = '';
         // 第○回（最新2026年8月版の報告見出しはG83）
@@ -1791,7 +1850,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         // 本部用シート：回数／点検日／担当者
         ws.getCell('A1').value = `${kaiText}ＡＫＴ活動審査表`;
         ws.getCell('K1').value = `　点検日：${formatDateJp(state.date, true)}`;
-        ws.getCell('C3').value = state.evaluator || '';
+        ws.getCell('C3').value = storeAnswers.hqEvaluator || storeAnswers.evaluatorName || state.evaluator || '';
       }
 
       let matchCount = 0; // マッチ件数カウント用
@@ -1919,12 +1978,17 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         const ans = storeAnswers[m.matchedItem.id] || {};
         if (ans.score !== undefined) {
           m.row.getCell(m.scoreCol).value = ans.score;
-          // 強化項目は設問行の次行にある集計セルにも直接書き込む
-          if (['q_special', 'q_special_ai'].includes(m.matchedItem.id)) {
-            ws.getRow(m.rowNumber + 1).getCell(m.scoreCol).value = ans.score;
-          }
         } else {
           m.row.getCell(m.scoreCol).value = "未入力";
+        }
+
+        // 見た目だけ広くなっていたコメント欄を、実際に右端(T列)まで結合する。
+        const commentEndCol = 20;
+        if (m.commentCol <= commentEndCol) {
+          const commentStart = m.row.getCell(m.commentCol);
+          if (!commentStart.isMerged) {
+            ws.mergeCells(m.rowNumber, m.commentCol, m.rowNumber, commentEndCol);
+          }
         }
         if (ans.comment) {
           const commentCell = m.row.getCell(m.commentCol);
@@ -1955,7 +2019,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
 
-        const setSummaryComment = (address, text, rowNumber) => {
+        const setSummaryComment = (address, text, rowNumber, mergeRange) => {
+          const mergeStart = ws.getCell(address);
+          if (mergeRange && !mergeStart.isMerged) ws.mergeCells(mergeRange);
           const cell = ws.getCell(address);
           cell.value = text || '';
           cell.alignment = {
@@ -1964,12 +2030,12 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             vertical: 'top',
             wrapText: true
           };
-          const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 28) * 18));
+          const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 80) * 18));
           ws.getRow(rowNumber).height = Math.max(Number(ws.getRow(rowNumber).height) || 0, estimatedHeight);
         };
         // テンプレートの見本コメントが入っている実際の記入欄へ編別に出力する。
-        setSummaryComment('E38', hallComment, 38);
-        setSummaryComment('G81', backyardComment, 81);
+        setSummaryComment('F36', hallComment, 36, 'F36:L40');
+        setSummaryComment('E80', backyardComment, 80, 'E80:T81');
         if (staffName) ws.getCell('N37').value = staffName;
         if (staffPosition) ws.getCell('Q37').value = staffPosition;
         if (staffReason) ws.getCell('N38').value = staffReason;
