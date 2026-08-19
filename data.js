@@ -20,7 +20,7 @@ const checklistData = [
     category: "プロモーション",
     edition: "hall",
     items: [
-      { id: "q7", text: "出入口及び施設内の手指の消毒設備は、お客様が使用しやすい場所に設置されているか ※平塚店のみ出入口は除く", points: [3, 1, 0], isPriority: false },
+      { id: "q7", text: "出入口及び施設内の手指の消毒設備は、お客様が使用しやすい場所に設置されているか ※平塚店のみ出入口を除く", points: [3, 1, 0], isPriority: false },
       { id: "q8", text: "ホール内のＰＯＰやポスター、装飾品・掲示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [5, 1, 0], isPriority: true },
       { id: "q9", text: "トイレ内の装飾品・掲示物などは曲がりや歪み、破れや汚れ・色あせはありませんでしたか", points: [3, 1, 0], isPriority: false },
       { id: "q10", text: "カウンター賞品のプライスカードやＰＯＰは、見やすく、汚れ・色落ち・破損はないか", points: [3, 1, 0], isPriority: false },

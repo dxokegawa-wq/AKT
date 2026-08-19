@@ -1,4 +1,4 @@
-// v20260819-17: 2026年8月版の強化項目（5S・AI活用）と最新Excel帳票に対応
+// v20260819-18: クラウド送信結果を検証し、点数0件での空Excel出力を防止
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -1399,6 +1399,10 @@ async function sendDataToCloud() {
       });
       const resJson = await res.json().catch(() => null);
       console.log(`[送信] ${storeName} のGASレスポンス:`, resJson);
+      if (!res.ok || !resJson || resJson.status !== 'success') {
+        const detail = resJson && (resJson.message || resJson.error);
+        throw new Error(`${storeName}のクラウド保存が確認できませんでした${detail ? `: ${detail}` : ''}`);
+      }
       sentCount++;
     }
     
@@ -1453,6 +1457,7 @@ async function fetchAndDownloadExcel() {
 
       // デバッグ用：店舗ごとに「クラウドから何件の回答（点数）が返ってきたか」を可視化する
       const debugLines = [];
+      let totalCloudScores = 0;
       for (const storeName of appStores) {
         const cloudAns = data.answers[storeName];
         if (!cloudAns) {
@@ -1462,20 +1467,23 @@ async function fetchAndDownloadExcel() {
         const scoredCount = Object.keys(cloudAns).filter(
           k => cloudAns[k] && typeof cloudAns[k] === 'object' && cloudAns[k].score !== undefined
         ).length;
+        totalCloudScores += scoredCount;
         debugLines.push(`${storeName}: クラウドから${scoredCount}件の点数を取得`);
       }
       console.log("[クラウド取得結果] 店舗別件数:\n" + debugLines.join('\n'));
 
-      const totalScored = debugLines.filter(l => !l.includes('0件') && !l.includes('データ無し')).length;
-      if (totalScored === 0) {
+      if (totalCloudScores === 0) {
         alert(
-          "⚠️ クラウドから採点データが1件も取得できませんでした。\n\n" +
+          "⚠️ クラウドから採点点数が1件も取得できないため、Excel出力を中止しました。\n\n" +
           "【考えられる原因】\n" +
           "・選んだ審査日が、審査員が送信した日付と違う\n" +
           "・審査員が「採点データを本部へ送信」をまだ押していない\n" +
-          "・GAS（Googleスプレッドジート）側の保存に問題がある\n\n" +
+          "・送信時に通信またはGAS側の保存エラーが発生した\n\n" +
           "【店舗別の取得状況】\n" + debugLines.join('\n')
         );
+        btnFetchAndDownload.textContent = 'クラウドデータを合体してExcel出力';
+        btnFetchAndDownload.disabled = false;
+        return;
       }
 
       for (const store in data.answers) {
