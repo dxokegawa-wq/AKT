@@ -1,4 +1,4 @@
-// v20260819-22: 全設問コメントを必須化し、本部総評のExcel反映・中央表示・罫線保持に対応
+// v20260819-23: 本部総評のクラウド互換保存、ホール罫線、未回答確認、開始時スクロールを修正
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -264,6 +264,7 @@ async function init() {
       await saveStateToIDB(); // 審査途中の位置を保持
       loadStoreScoring();
       switchScreen('scoring');
+      scrollPageToTop();
     } else {
       setIdleState();
       dateSelect.value = getTodayIsoDate();
@@ -331,6 +332,7 @@ async function init() {
         await saveStateToIDB();
         loadStoreScoring();
         switchScreen('scoring');
+        scrollPageToTop();
       } else {
         alert("パスワードが間違っています。本部に最新のパスワードを確認してください。");
       }
@@ -818,6 +820,17 @@ function switchScreen(screenName) {
   }
 }
 
+function scrollPageToTop() {
+  // 画面切替とカテゴリタブの描画完了後に確実に先頭へ戻す。
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  });
+}
+
 // Route Preview
 function getRouteStores() {
   if (state.edition === 'hall') {
@@ -881,6 +894,7 @@ async function startScoringSequence() {
 
   loadStoreScoring();
   switchScreen('scoring');
+  scrollPageToTop();
 }
 
 function getFilteredChecklist() {
@@ -910,11 +924,37 @@ function getStoreCommentForEdition(storeAnswers, edition) {
   return storeAnswers.storeComment ?? '';
 }
 
+function getHQSummaryComment(storeAnswers) {
+  if (!storeAnswers) return '';
+  const candidates = [
+    storeAnswers.hqStoreComment,
+    storeAnswers.storeComment,
+    storeAnswers.summaryComment,
+    storeAnswers.hqSummary?.comment,
+    storeAnswers.__hq_summary__?.comment
+  ];
+  for (const value of candidates) {
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return '';
+}
+
+function persistHQSummaryComment(storeAnswers, value) {
+  if (!storeAnswers) return;
+  const text = String(value ?? '');
+  // 旧GAS・旧クライアントとの互換性を保つため、従来キーとオブジェクト型キーの両方へ保持する。
+  storeAnswers.hqStoreComment = text;
+  storeAnswers.storeComment = text;
+  storeAnswers.summaryComment = text;
+  storeAnswers.hqSummary = { ...(storeAnswers.hqSummary || {}), comment: text };
+  storeAnswers.__hq_summary__ = { ...(storeAnswers.__hq_summary__ || {}), comment: text };
+}
+
 function saveVisibleStoreComments(storeAnswers) {
   const routeStores = getRouteStores();
   const storeName = routeStores[state.routeIndex];
   if (!storeAnswers || isHQStoreName(storeName)) {
-    if (storeAnswers) storeAnswers.storeComment = storeCommentInput.value;
+    if (storeAnswers) persistHQSummaryComment(storeAnswers, storeCommentInput.value);
     return;
   }
 
@@ -960,7 +1000,7 @@ function loadStoreScoring() {
   storeCommentInput.classList.remove('input-error');
   backyardStoreCommentInput.classList.remove('input-error');
   storeCommentInput.value = isHQStore
-    ? (storeAnswers.storeComment || '')
+    ? getHQSummaryComment(storeAnswers)
     : getStoreCommentForEdition(storeAnswers, 'hall');
   backyardStoreCommentInput.value = getStoreCommentForEdition(storeAnswers, 'backyard');
   hallStoreCommentSection.classList.toggle('hidden', !isHQStore && state.edition === 'backyard');
@@ -1039,7 +1079,7 @@ async function handleStoreCompletion(isFinal) {
 
   const requiredSummary = [];
   if (isHQStoreName(storeName)) {
-    if (!String(storeAnswers.storeComment || '').trim()) {
+    if (!getHQSummaryComment(storeAnswers).trim()) {
       requiredSummary.push({ input: storeCommentInput, label: '本部' });
     }
   } else {
@@ -1061,8 +1101,8 @@ async function handleStoreCompletion(isFinal) {
   }
 
   if (missingScores.length > 0) {
-    const jump = confirm(`未回答の項目が ${missingScores.length} 個あります。\n\n「OK」: 最初の未入力項目へ移動\n「キャンセル」: 未回答のまま進む`);
-    if (jump) {
+    const proceed = confirm(`未回答の項目が ${missingScores.length} 個あります。\n\n未回答のまま次へ進みますか？\n\n「OK」: 未回答のまま進む\n「キャンセル」: 最初の未入力項目へ移動`);
+    if (!proceed) {
       await saveStateToIDB();
       jumpToChecklistIssue(missingScores[0]);
       return;
@@ -1409,7 +1449,7 @@ async function returnToScoringFromResult() {
   await saveStateToIDB();
   loadStoreScoring();
   switchScreen('scoring');
-  window.scrollTo(0, 0);
+  scrollPageToTop();
 }
 
 async function resetApp() {
@@ -1438,10 +1478,12 @@ async function sendDataToCloud() {
       
       // 点数が入力されているかチェック
       let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && typeof storeAnswers[key] === 'object' && storeAnswers[key].score !== undefined);
-      if (!hasScore && !storeAnswers.storeComment && !storeAnswers.hallStoreComment && !storeAnswers.backyardStoreComment && !storeAnswers.staffName) continue;
+      const hqSummaryComment = isHQStoreName(storeName) ? getHQSummaryComment(storeAnswers) : '';
+      if (!hasScore && !hqSummaryComment && !storeAnswers.storeComment && !storeAnswers.hallStoreComment && !storeAnswers.backyardStoreComment && !storeAnswers.staffName) continue;
 
       // GASのload応答はanswersだけを返すため、審査員名もanswers内へ編別に保持する。
       if (isHQStoreName(storeName)) {
+        persistHQSummaryComment(storeAnswers, hqSummaryComment);
         storeAnswers.hqEvaluator = state.evaluator || '';
       } else if (state.edition === 'hall') {
         storeAnswers.hallEvaluator = state.evaluator || '';
@@ -1559,7 +1601,12 @@ async function fetchAndDownloadExcel() {
 
       for (const store in data.answers) {
         if (!state.answers[store]) state.answers[store] = {};
-        Object.assign(state.answers[store], data.answers[store]);
+        const incomingAnswers = data.answers[store];
+        if (isHQStoreName(store)) {
+          const hqSummaryComment = getHQSummaryComment(incomingAnswers);
+          if (hqSummaryComment) persistHQSummaryComment(incomingAnswers, hqSummaryComment);
+        }
+        Object.assign(state.answers[store], incomingAnswers);
       }
 
       // 月別結果をクラウド履歴へ保存し、当年度4月からの履歴を取得する。
@@ -1871,7 +1918,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // デフォルト（ヘッダーが見つからない場合の保険）
       const DEFAULT_SCORE_COL = 14;   // N列
-      const DEFAULT_COMMENT_COL = 15; // O列
+      const DEFAULT_COMMENT_COL = isHQStore ? 18 : 15; // 店舗はO列、本部はR列
 
       // 記号や空白をすべて無視して純粋な文字だけで比較するための関数
       const normalize = (str) => {
@@ -1970,7 +2017,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             rowNumber: rowNumber,
             matchedItem: matchedItem,
             scoreCol: rowScoreCol[rowNumber] || DEFAULT_SCORE_COL,
-            commentCol: rowCommentCol[rowNumber] || DEFAULT_COMMENT_COL
+            // 見出し文字の位置ではなく、罫線上の実開始列を使用する。
+            // 店舗シートはO列、HQシートはR列。
+            commentCol: DEFAULT_COMMENT_COL
           });
         }
       });
@@ -2194,7 +2243,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${fiveSScore}+AI${aiScore}→${backPoints}点`);
       } else {
         // 本部総評は「コメント・メモ欄」の内側（B36:T39）へ中央表示する。
-        setSummaryComment('B36', storeAnswers.storeComment || '', 36, [36, 2, 39, 20]);
+        setSummaryComment('B36', getHQSummaryComment(storeAnswers), 36, [36, 2, 39, 20]);
 
         // 本部用シート下部の達成率・得点を静的値で反映する。
         const hqItems = appChecklist.filter(c => c.edition === 'hq').flatMap(c => c.items);
