@@ -1,4 +1,4 @@
-// v20260819-29: 2端末送信時に編別総評コメントが空文字で上書きされる問題を修正
+// v20260819-30: 旧クラウド空文字が残っていても再送した編別総評を優先する互換保存を追加
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -969,10 +969,50 @@ function isHQStoreName(storeName) {
 }
 
 function getStoreCommentForEdition(storeAnswers, edition) {
+  if (edition === 'hall') return getHallSummaryComment(storeAnswers);
+  if (edition === 'backyard') return getBackyardSummaryComment(storeAnswers);
+  return firstNonEmptySummaryValue([storeAnswers?.storeComment]);
+}
+
+function firstNonEmptySummaryValue(candidates) {
+  for (const value of candidates || []) {
+    if (value !== undefined && value !== null && String(value).trim()) return String(value);
+  }
+  return '';
+}
+
+function getHallSummaryComment(storeAnswers) {
   if (!storeAnswers) return '';
-  if (edition === 'hall') return storeAnswers.hallStoreComment ?? storeAnswers.storeComment ?? '';
-  if (edition === 'backyard') return storeAnswers.backyardStoreComment ?? storeAnswers.storeComment ?? '';
-  return storeAnswers.storeComment ?? '';
+  return firstNonEmptySummaryValue([
+    storeAnswers.hallStoreComment,
+    storeAnswers.hallSummary?.comment,
+    storeAnswers.__hall_summary__?.comment,
+    storeAnswers.storeComment
+  ]);
+}
+
+function getBackyardSummaryComment(storeAnswers) {
+  if (!storeAnswers) return '';
+  return firstNonEmptySummaryValue([
+    storeAnswers.backyardStoreComment,
+    storeAnswers.backyardSummary?.comment,
+    storeAnswers.__backyard_summary__?.comment,
+    storeAnswers.storeComment
+  ]);
+}
+
+function persistStoreSummaryComment(storeAnswers, edition, value) {
+  if (!storeAnswers) return;
+  const text = String(value ?? '');
+  if (edition === 'hall') {
+    storeAnswers.hallStoreComment = text;
+    storeAnswers.hallSummary = { ...(storeAnswers.hallSummary || {}), comment: text };
+    storeAnswers.__hall_summary__ = { ...(storeAnswers.__hall_summary__ || {}), comment: text };
+  } else if (edition === 'backyard') {
+    storeAnswers.backyardStoreComment = text;
+    storeAnswers.backyardSummary = { ...(storeAnswers.backyardSummary || {}), comment: text };
+    storeAnswers.__backyard_summary__ = { ...(storeAnswers.__backyard_summary__ || {}), comment: text };
+  }
 }
 
 function getHQSummaryComment(storeAnswers) {
@@ -1010,10 +1050,10 @@ function saveVisibleStoreComments(storeAnswers) {
   }
 
   if (state.edition === 'hall' || state.edition === 'all') {
-    storeAnswers.hallStoreComment = storeCommentInput.value;
+    persistStoreSummaryComment(storeAnswers, 'hall', storeCommentInput.value);
   }
   if (state.edition === 'backyard' || state.edition === 'all') {
-    storeAnswers.backyardStoreComment = backyardStoreCommentInput.value;
+    persistStoreSummaryComment(storeAnswers, 'backyard', backyardStoreCommentInput.value);
   }
 }
 
@@ -1026,16 +1066,18 @@ function buildEditionScopedCloudAnswers(storeName, storeAnswers, edition) {
 
   const legacyComment = String(scopedAnswers.storeComment ?? '');
   if (edition === 'hall') {
-    if (!String(scopedAnswers.hallStoreComment ?? '').trim() && legacyComment.trim()) {
-      scopedAnswers.hallStoreComment = legacyComment;
-    }
+    const hallComment = getHallSummaryComment(scopedAnswers) || legacyComment;
+    if (hallComment) persistStoreSummaryComment(scopedAnswers, 'hall', hallComment);
     delete scopedAnswers.backyardStoreComment;
+    delete scopedAnswers.backyardSummary;
+    delete scopedAnswers.__backyard_summary__;
     delete scopedAnswers.backyardEvaluator;
   } else if (edition === 'backyard') {
-    if (!String(scopedAnswers.backyardStoreComment ?? '').trim() && legacyComment.trim()) {
-      scopedAnswers.backyardStoreComment = legacyComment;
-    }
+    const backyardComment = getBackyardSummaryComment(scopedAnswers) || legacyComment;
+    if (backyardComment) persistStoreSummaryComment(scopedAnswers, 'backyard', backyardComment);
     delete scopedAnswers.hallStoreComment;
+    delete scopedAnswers.hallSummary;
+    delete scopedAnswers.__hall_summary__;
     delete scopedAnswers.hallEvaluator;
     // 輝いていたスタッフ欄はホール編のみの入力項目。
     delete scopedAnswers.staffName;
@@ -1165,10 +1207,10 @@ async function handleStoreCompletion(isFinal) {
       requiredSummary.push({ input: storeCommentInput, label: '本部' });
     }
   } else {
-    if ((state.edition === 'hall' || state.edition === 'all') && !String(storeAnswers.hallStoreComment || '').trim()) {
+    if ((state.edition === 'hall' || state.edition === 'all') && !getHallSummaryComment(storeAnswers).trim()) {
       requiredSummary.push({ input: storeCommentInput, label: 'ホール編' });
     }
-    if ((state.edition === 'backyard' || state.edition === 'all') && !String(storeAnswers.backyardStoreComment || '').trim()) {
+    if ((state.edition === 'backyard' || state.edition === 'all') && !getBackyardSummaryComment(storeAnswers).trim()) {
       requiredSummary.push({ input: backyardStoreCommentInput, label: 'バックヤード編' });
     }
   }
@@ -1584,7 +1626,9 @@ async function sendDataToCloud() {
       // 点数が入力されているかチェック
       let hasScore = Object.keys(storeAnswers).some(key => storeAnswers[key] && typeof storeAnswers[key] === 'object' && storeAnswers[key].score !== undefined);
       const hqSummaryComment = isHQStoreName(storeName) ? getHQSummaryComment(storeAnswers) : '';
-      if (!hasScore && !hqSummaryComment && !storeAnswers.storeComment && !storeAnswers.hallStoreComment && !storeAnswers.backyardStoreComment && !storeAnswers.staffName) continue;
+      const hallSummaryComment = isHQStoreName(storeName) ? '' : getHallSummaryComment(storeAnswers);
+      const backyardSummaryComment = isHQStoreName(storeName) ? '' : getBackyardSummaryComment(storeAnswers);
+      if (!hasScore && !hqSummaryComment && !hallSummaryComment && !backyardSummaryComment && !storeAnswers.staffName) continue;
 
       // GASのload応答はanswersだけを返すため、審査員名もanswers内へ編別に保持する。
       if (isHQStoreName(storeName)) {
@@ -1710,6 +1754,11 @@ async function fetchAndDownloadExcel() {
         if (isHQStoreName(store)) {
           const hqSummaryComment = getHQSummaryComment(incomingAnswers);
           if (hqSummaryComment) persistHQSummaryComment(incomingAnswers, hqSummaryComment);
+        } else {
+          const hallSummaryComment = getHallSummaryComment(incomingAnswers);
+          const backyardSummaryComment = getBackyardSummaryComment(incomingAnswers);
+          if (hallSummaryComment) persistStoreSummaryComment(incomingAnswers, 'hall', hallSummaryComment);
+          if (backyardSummaryComment) persistStoreSummaryComment(incomingAnswers, 'backyard', backyardSummaryComment);
         }
         Object.assign(state.answers[store], incomingAnswers);
       }
@@ -2261,8 +2310,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // === 担当者総評コメント・輝いていたスタッフの書き込み ===
       if (!isHQStore) {
-        const hallComment = storeAnswers.hallStoreComment ?? storeAnswers.storeComment ?? '';
-        const backyardComment = storeAnswers.backyardStoreComment ?? storeAnswers.storeComment ?? '';
+        const hallComment = getHallSummaryComment(storeAnswers);
+        const backyardComment = getBackyardSummaryComment(storeAnswers);
         const staffName = storeAnswers.staffName || '';
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
