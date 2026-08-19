@@ -18,7 +18,7 @@
     <!-- Header -->
     <header class="app-header">
       <div>
-        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260812-14</span></h1>
+        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260819-17</span></h1>
         <div id="current-store-header" class="hidden text-sm text-secondary"></div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
@@ -86,9 +86,14 @@
       <div id="store-summary-section" class="card mt-4" style="background: rgba(0,0,0,0.1); border-color: var(--card-border); padding: 16px;">
         <h3 style="margin-bottom: 12px; font-size: 1.1rem;">【店舗ごとの総評・その他】</h3>
         
-        <div class="form-group">
-          <label for="store-comment">店舗総評コメント</label>
+        <div id="hall-store-comment-section" class="form-group">
+          <label id="hall-store-comment-label" for="store-comment">ホール編 総評コメント <span id="hall-summary-required" class="required-mark">必須</span></label>
           <textarea id="store-comment" class="comment-input" rows="3" placeholder="この店舗についてのコメントを入力..."></textarea>
+        </div>
+
+        <div id="backyard-store-comment-section" class="form-group hidden">
+          <label for="backyard-store-comment">バックヤード編 総評コメント <span class="required-mark">必須</span></label>
+          <textarea id="backyard-store-comment" class="comment-input" rows="3" placeholder="バックヤードについてのコメントを入力..."></textarea>
         </div>
 
         <div id="staff-summary-section">
@@ -116,6 +121,7 @@
 
         <div class="action-grid mt-4">
           <button id="btn-send-data" class="btn btn-primary btn-large">採点データを本部へ送信</button>
+          <button id="btn-edit-scoring" class="btn btn-secondary btn-large mt-2">採点内容を修正する</button>
           <button id="btn-back-to-setup" class="btn btn-secondary btn-large mt-2">トップに戻る</button>
         </div>
       </div>
@@ -141,6 +147,7 @@
           <div class="admin-section">
           <button class="tab-btn active" id="tab-admin-route">ルート設定</button>
           <button class="tab-btn" id="tab-admin-checklist">採点項目設定</button>
+          <button class="tab-btn" id="tab-admin-history">月別結果管理</button>
         </div>
 
         <!-- Route Settings -->
@@ -165,6 +172,27 @@
           <button id="btn-add-category" class="btn btn-secondary mt-4" style="width:100%">+ 新しいカテゴリを追加</button>
         </div>
         
+        <!-- Monthly Result History -->
+        <div id="admin-history-view" class="admin-view hidden">
+          <p class="text-secondary text-sm mb-4">
+            Excel出力した正式結果は月別履歴としてクラウド保存され、翌月以降の「結果資料」に自動反映されます。
+            点数修正が入った場合はここで点数・順位を直接修正できます。
+          </p>
+          <div class="form-group" style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+            <div style="flex:1; min-width:170px;">
+              <label for="history-month-select">対象月</label>
+              <input type="month" id="history-month-select">
+            </div>
+            <button id="btn-load-history" class="btn btn-secondary">クラウドから読込</button>
+          </div>
+          <div id="history-status" class="text-secondary text-sm mb-4"></div>
+          <div id="history-editor"></div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+            <button id="btn-history-recalc" class="btn btn-secondary" style="flex:1; min-width:180px;">点数から順位を自動計算</button>
+            <button id="btn-save-history" class="btn btn-success" style="flex:1; min-width:180px;">点数・順位をクラウド保存</button>
+          </div>
+        </div>
+
         <div class="mt-4 pt-4" style="border-top: 1px solid var(--card-border); text-align: right;">
           <button id="btn-save-admin" class="btn btn-success">設定を保存</button>
           <button id="btn-reset-admin" class="btn btn-danger" style="margin-top: 10px; width: 100%;">初期データにリセット</button>
@@ -186,7 +214,7 @@
 
   </div>
 
-  <script src="data.js?v=20260812_13"></script>
-  <script src="app_trial_safe_20260812_14.js?v=20260812_14"></script>
+  <script src="data.js?v=20260819_17"></script>
+  <script src="app_trial_safe_20260819_15.js?v=20260819_17"></script>
 </body>
 </html>

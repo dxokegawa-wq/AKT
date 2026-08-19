@@ -100,12 +100,13 @@ const checklistData = [
     ]
   },
 
-  // --- 改善の取組み ---
+  // --- 強化項目（2026年8月版） ---
   {
-    category: "改善の取組み",
+    category: "強化項目",
     edition: "backyard",
     items: [
-      { id: "q_special", text: "ホール及びバックヤードにて、改善の取組み（５Sまたは業務改善・効率化）はありましたか", points: [10, 8, 4, 0], isPriority: false }
+      { id: "q_special", text: "ホール及びバックヤードにて、５Sの取組みはありましたか", points: [10, 8, 4, 0], isPriority: false },
+      { id: "q_special_ai", text: "ホール及びバックヤードにて、AI活用による業務改善・効率化はありましたか", points: [10, 8, 4, 0], isPriority: false }
     ]
   },
 
