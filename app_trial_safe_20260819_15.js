@@ -1,4 +1,4 @@
-// v20260819-27: 設問コメント出力時の自動折り返しを止め、既定行高を固定
+// v20260819-28: 総評コメント結合範囲のテンプレート行高を固定
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -2202,7 +2202,17 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
       });
 
       const setSummaryComment = (address, text, rowNumber, mergeBounds) => {
-        if (mergeBounds) mergeCellsWithOuterBorder(...mergeBounds);
+        const templateRowHeights = [];
+        if (mergeBounds) {
+          const [startRow, , endRow] = mergeBounds;
+          for (let row = startRow; row <= endRow; row++) {
+            templateRowHeights.push({
+              row,
+              height: Number(ws.getRow(row).height) || Number(ws.properties.defaultRowHeight) || 15
+            });
+          }
+          mergeCellsWithOuterBorder(...mergeBounds);
+        }
         const cell = ws.getCell(address);
         cell.value = text || '';
         cell.alignment = {
@@ -2211,8 +2221,11 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
           vertical: 'middle',
           wrapText: true
         };
-        const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 80) * 18));
-        ws.getRow(rowNumber).height = Math.max(Number(ws.getRow(rowNumber).height) || 0, estimatedHeight);
+        // 36行目など先頭行だけを広げると、右側のスタッフ欄との行位置が崩れる。
+        // 結合範囲内はテンプレート既定の各行高をそのまま維持する。
+        templateRowHeights.forEach(({ row, height }) => {
+          ws.getRow(row).height = height;
+        });
       };
 
       // === 担当者総評コメント・輝いていたスタッフの書き込み ===
