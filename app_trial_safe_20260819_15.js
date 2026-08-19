@@ -1,4 +1,4 @@
-// v20260819-21: Excel結合セルの外周罫線を復元し、総評コメントを中央表示
+// v20260819-22: 全設問コメントを必須化し、本部総評のExcel反映・中央表示・罫線保持に対応
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -956,7 +956,7 @@ function loadStoreScoring() {
   if (hallStoreCommentLabel?.childNodes[0]) {
     hallStoreCommentLabel.childNodes[0].nodeValue = isHQStore ? '本部 総評コメント ' : 'ホール編 総評コメント ';
   }
-  hallSummaryRequired?.classList.toggle('hidden', isHQStore);
+  hallSummaryRequired?.classList.remove('hidden');
   storeCommentInput.classList.remove('input-error');
   backyardStoreCommentInput.classList.remove('input-error');
   storeCommentInput.value = isHQStore
@@ -1023,37 +1023,41 @@ async function handleStoreCompletion(isFinal) {
   filteredChecklist.forEach(cat => {
     cat.items.forEach(item => {
       const answer = storeAnswers[item.id] || {};
-      if (answer.score === undefined) missingScores.push({ category: cat.category, item });
-      if (requiresCommentForScore(item, answer.score) && !String(answer.comment || '').trim()) {
-        missingRequiredComments.push({ category: cat.category, item });
+      if (answer.score === undefined) missingScores.push({ category: cat.category, item, field: 'score' });
+      if (!String(answer.comment || '').trim()) {
+        missingRequiredComments.push({ category: cat.category, item, field: 'comment' });
       }
     });
   });
 
   if (missingRequiredComments.length > 0) {
-    alert(`「一部」または「未実施」のコメント未入力が ${missingRequiredComments.length} 個あります。最初の該当項目へ移動します。`);
+    alert(`必須コメントの未入力が ${missingRequiredComments.length} 個あります。最初の該当項目へ移動します。`);
     await saveStateToIDB();
     jumpToChecklistIssue(missingRequiredComments[0]);
     return;
   }
 
-  if (!isHQStoreName(storeName)) {
-    const requiredSummary = [];
+  const requiredSummary = [];
+  if (isHQStoreName(storeName)) {
+    if (!String(storeAnswers.storeComment || '').trim()) {
+      requiredSummary.push({ input: storeCommentInput, label: '本部' });
+    }
+  } else {
     if ((state.edition === 'hall' || state.edition === 'all') && !String(storeAnswers.hallStoreComment || '').trim()) {
       requiredSummary.push({ input: storeCommentInput, label: 'ホール編' });
     }
     if ((state.edition === 'backyard' || state.edition === 'all') && !String(storeAnswers.backyardStoreComment || '').trim()) {
       requiredSummary.push({ input: backyardStoreCommentInput, label: 'バックヤード編' });
     }
-    if (requiredSummary.length > 0) {
-      alert(`${requiredSummary.map(x => x.label).join('・')}の総評コメントを入力してください。`);
-      const target = requiredSummary[0].input;
-      target.classList.add('input-error');
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      target.focus({ preventScroll: true });
-      await saveStateToIDB();
-      return;
-    }
+  }
+  if (requiredSummary.length > 0) {
+    alert(`${requiredSummary.map(x => x.label).join('・')}の総評コメントを入力してください。`);
+    const target = requiredSummary[0].input;
+    target.classList.add('input-error');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.focus({ preventScroll: true });
+    await saveStateToIDB();
+    return;
   }
 
   if (missingScores.length > 0) {
@@ -1079,10 +1083,6 @@ async function handleStoreCompletion(isFinal) {
   }
 }
 
-function requiresCommentForScore(item, score) {
-  return !['q_special', 'q_special_ai'].includes(item.id) && item.points.length > 2 && (score === 1 || score === 0);
-}
-
 function jumpToChecklistIssue(issue) {
   if (!issue) return;
   selectCategory(issue.category);
@@ -1091,6 +1091,11 @@ function jumpToChecklistIssue(issue) {
     if (!card) return;
     card.classList.add('needs-attention');
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (issue.field === 'comment') {
+      const commentInput = card.querySelector('.comment-input');
+      commentInput?.classList.add('input-error');
+      commentInput?.focus({ preventScroll: true });
+    }
     setTimeout(() => card.classList.remove('needs-attention'), 2600);
   });
 }
@@ -1252,16 +1257,24 @@ function renderQuestions(categoryName) {
     });
     qDiv.appendChild(btnContainer);
 
-    // Comment Input
+    // Comment Input（全設問で必須）
+    const commentLabel = document.createElement('div');
+    commentLabel.className = 'question-comment-label';
+    commentLabel.innerHTML = 'コメント <span class="required-mark">必須</span>';
+    qDiv.appendChild(commentLabel);
+
     const commentInput = document.createElement('textarea');
     commentInput.className = 'comment-input';
-    commentInput.placeholder = '改善点・コメント等...';
+    commentInput.placeholder = 'コメントを入力してください（必須）';
+    commentInput.required = true;
+    commentInput.setAttribute('aria-required', 'true');
     if (storeAnswers[item.id] && storeAnswers[item.id].comment) {
       commentInput.value = storeAnswers[item.id].comment;
     }
     commentInput.addEventListener('input', (e) => {
       if (!storeAnswers[item.id]) storeAnswers[item.id] = {};
       storeAnswers[item.id].comment = e.target.value;
+      if (String(e.target.value || '').trim()) commentInput.classList.remove('input-error');
       scheduleStateSave();
     });
     qDiv.appendChild(commentInput);
@@ -1974,19 +1987,41 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
       });
 
       const cloneBorderSide = (side) => side ? JSON.parse(JSON.stringify(side)) : undefined;
+      const firstBorderSide = (cells, sideName) => {
+        for (const cell of cells) {
+          const side = cell.border?.[sideName];
+          if (side?.style) return cloneBorderSide(side);
+        }
+        return undefined;
+      };
+      const setBorderSide = (cell, sideName, side) => {
+        if (!side) return;
+        cell.border = {
+          ...(cell.border || {}),
+          [sideName]: cloneBorderSide(side)
+        };
+      };
       const mergeCellsWithOuterBorder = (startRow, startCol, endRow, endCol) => {
         const master = ws.getCell(startRow, startCol);
         if (master.isMerged) return master;
 
-        const topLeft = ws.getCell(startRow, startCol);
-        const topRight = ws.getCell(startRow, endCol);
-        const bottomLeft = ws.getCell(endRow, startCol);
-        const bottomRight = ws.getCell(endRow, endCol);
+        const topCells = [];
+        const bottomCells = [];
+        const leftCells = [];
+        const rightCells = [];
+        for (let col = startCol; col <= endCol; col++) {
+          topCells.push(ws.getCell(startRow, col));
+          bottomCells.push(ws.getCell(endRow, col));
+        }
+        for (let row = startRow; row <= endRow; row++) {
+          leftCells.push(ws.getCell(row, startCol));
+          rightCells.push(ws.getCell(row, endCol));
+        }
         const outerBorder = {
-          left: cloneBorderSide(topLeft.border?.left || bottomLeft.border?.left),
-          right: cloneBorderSide(topRight.border?.right || bottomRight.border?.right),
-          top: cloneBorderSide(topLeft.border?.top || topRight.border?.top),
-          bottom: cloneBorderSide(bottomLeft.border?.bottom || bottomRight.border?.bottom)
+          left: firstBorderSide(leftCells, 'left'),
+          right: firstBorderSide(rightCells, 'right'),
+          top: firstBorderSide(topCells, 'top'),
+          bottom: firstBorderSide(bottomCells, 'bottom')
         };
 
         ws.mergeCells(startRow, startCol, endRow, endCol);
@@ -1995,6 +2030,14 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
           ...(mergedMaster.border || {}),
           ...outerBorder
         };
+        for (let col = startCol; col <= endCol; col++) {
+          setBorderSide(ws.getCell(startRow, col), 'top', outerBorder.top);
+          setBorderSide(ws.getCell(endRow, col), 'bottom', outerBorder.bottom);
+        }
+        for (let row = startRow; row <= endRow; row++) {
+          setBorderSide(ws.getCell(row, startCol), 'left', outerBorder.left);
+          setBorderSide(ws.getCell(row, endCol), 'right', outerBorder.right);
+        }
         return mergedMaster;
       };
 
@@ -2007,8 +2050,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
           m.row.getCell(m.scoreCol).value = "未入力";
         }
 
-        // 見た目だけ広くなっていたコメント欄を、実際に右端(T列)まで結合する。
-        const commentEndCol = 20;
+        // 見た目だけ広くなっていたコメント欄を、実際の右端まで結合する。
+        // 店舗シートはT列、本部シートはU列が外枠の右端。
+        const commentEndCol = isHQStore ? 21 : 20;
         if (m.commentCol <= commentEndCol) {
           mergeCellsWithOuterBorder(m.rowNumber, m.commentCol, m.rowNumber, commentEndCol);
         }
@@ -2033,6 +2077,20 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         }
       });
 
+      const setSummaryComment = (address, text, rowNumber, mergeBounds) => {
+        if (mergeBounds) mergeCellsWithOuterBorder(...mergeBounds);
+        const cell = ws.getCell(address);
+        cell.value = text || '';
+        cell.alignment = {
+          ...(cell.alignment || {}),
+          horizontal: 'center',
+          vertical: 'middle',
+          wrapText: true
+        };
+        const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 80) * 18));
+        ws.getRow(rowNumber).height = Math.max(Number(ws.getRow(rowNumber).height) || 0, estimatedHeight);
+      };
+
       // === 担当者総評コメント・輝いていたスタッフの書き込み ===
       if (!isHQStore) {
         const hallComment = storeAnswers.hallStoreComment ?? storeAnswers.storeComment ?? '';
@@ -2041,19 +2099,6 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         const staffPosition = storeAnswers.staffPosition || '';
         const staffReason = storeAnswers.staffReason || '';
 
-        const setSummaryComment = (address, text, rowNumber, mergeBounds) => {
-          if (mergeBounds) mergeCellsWithOuterBorder(...mergeBounds);
-          const cell = ws.getCell(address);
-          cell.value = text || '';
-          cell.alignment = {
-            ...(cell.alignment || {}),
-            horizontal: 'center',
-            vertical: 'middle',
-            wrapText: true
-          };
-          const estimatedHeight = Math.min(180, Math.max(45, Math.ceil(String(text || '').length / 80) * 18));
-          ws.getRow(rowNumber).height = Math.max(Number(ws.getRow(rowNumber).height) || 0, estimatedHeight);
-        };
         // テンプレートの見本コメントが入っている実際の記入欄へ編別に出力する。
         setSummaryComment('F36', hallComment, 36, [36, 6, 40, 12]);
         setSummaryComment('E80', backyardComment, 80, [80, 5, 81, 20]);
@@ -2148,6 +2193,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
         // デバッグ用：計算値を記録
         storeMatchCounts.push(`  └${storeName} 集計: ホール${hallScore}/${hallMax}点→${hallPoints}点 | BK${backScore}/${backMax}+5S${fiveSScore}+AI${aiScore}→${backPoints}点`);
       } else {
+        // 本部総評は「コメント・メモ欄」の内側（B36:T39）へ中央表示する。
+        setSummaryComment('B36', storeAnswers.storeComment || '', 36, [36, 2, 39, 20]);
+
         // 本部用シート下部の達成率・得点を静的値で反映する。
         const hqItems = appChecklist.filter(c => c.edition === 'hq').flatMap(c => c.items);
         const officeItems = hqItems.slice(0, 8);

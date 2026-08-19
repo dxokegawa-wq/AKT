@@ -333,6 +333,13 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
 }
 
+.question-comment-label {
+  margin-top: 14px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .photo-preview-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
