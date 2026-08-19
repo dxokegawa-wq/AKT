@@ -1,4 +1,4 @@
-// v20260819-23: 本部総評のクラウド互換保存、ホール罫線、未回答確認、開始時スクロールを修正
+// v20260819-24: 設問コメントの必須条件を強化項目・低評価時だけに修正
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -1064,7 +1064,7 @@ async function handleStoreCompletion(isFinal) {
     cat.items.forEach(item => {
       const answer = storeAnswers[item.id] || {};
       if (answer.score === undefined) missingScores.push({ category: cat.category, item, field: 'score' });
-      if (!String(answer.comment || '').trim()) {
+      if (requiresCommentForScore(item, answer.score) && !String(answer.comment || '').trim()) {
         missingRequiredComments.push({ category: cat.category, item, field: 'comment' });
       }
     });
@@ -1121,6 +1121,17 @@ async function handleStoreCompletion(isFinal) {
     loadStoreScoring();
     window.scrollTo(0,0);
   }
+}
+
+function requiresCommentForScore(item, score) {
+  // 指定された強化項目（5S・AI）は、選択点数に関係なくコメント必須。
+  if (['q_special', 'q_special_ai'].includes(item.id)) return true;
+  if (score === undefined || score === null) return false;
+
+  // 通常項目は低評価時のみ必須。
+  // 3/1/0等は「一部(1)・未実施(0)」、1/0項目は「出来ていない(0)」が対象。
+  if (Number(score) === 0) return true;
+  return item.points.length > 2 && Number(score) === 1;
 }
 
 function jumpToChecklistIssue(issue) {
@@ -1258,6 +1269,7 @@ function renderQuestions(categoryName) {
       return `${pts}点`;
     };
 
+    let updateCommentRequirement = () => {};
     item.points.forEach((pts, btnIndex) => {
       const btn = document.createElement('button');
       btn.className = 'score-btn';
@@ -1287,6 +1299,7 @@ function renderQuestions(categoryName) {
         
         if (!storeAnswers[item.id]) storeAnswers[item.id] = {};
         storeAnswers[item.id].score = pts;
+        updateCommentRequirement(pts);
         
         qDiv.classList.add('answered');
         updateTotalScore();
@@ -1297,20 +1310,30 @@ function renderQuestions(categoryName) {
     });
     qDiv.appendChild(btnContainer);
 
-    // Comment Input（全設問で必須）
+    // Comment Input（強化項目は常時必須、通常項目は低評価時のみ必須）
     const commentLabel = document.createElement('div');
     commentLabel.className = 'question-comment-label';
-    commentLabel.innerHTML = 'コメント <span class="required-mark">必須</span>';
+    commentLabel.textContent = 'コメント ';
+    const requiredMark = document.createElement('span');
+    requiredMark.className = 'required-mark';
+    requiredMark.textContent = '必須';
+    commentLabel.appendChild(requiredMark);
     qDiv.appendChild(commentLabel);
 
     const commentInput = document.createElement('textarea');
     commentInput.className = 'comment-input';
-    commentInput.placeholder = 'コメントを入力してください（必須）';
-    commentInput.required = true;
-    commentInput.setAttribute('aria-required', 'true');
     if (storeAnswers[item.id] && storeAnswers[item.id].comment) {
       commentInput.value = storeAnswers[item.id].comment;
     }
+    updateCommentRequirement = (score) => {
+      const required = requiresCommentForScore(item, score);
+      requiredMark.classList.toggle('hidden', !required);
+      commentInput.required = required;
+      commentInput.setAttribute('aria-required', required ? 'true' : 'false');
+      commentInput.placeholder = required ? 'コメントを入力してください（必須）' : '改善点・コメント等...';
+      if (!required) commentInput.classList.remove('input-error');
+    };
+    updateCommentRequirement(storeAnswers[item.id]?.score);
     commentInput.addEventListener('input', (e) => {
       if (!storeAnswers[item.id]) storeAnswers[item.id] = {};
       storeAnswers[item.id].comment = e.target.value;
