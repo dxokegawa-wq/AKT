@@ -535,14 +535,67 @@ input:focus, select:focus, textarea:focus {
 
 .drag-handle:active { cursor: grabbing; }
 
+.drag-sort-active,
+.drag-sort-active * {
+  cursor: grabbing !important;
+}
+
 .drag-sort-item {
-  transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  position: relative;
+  transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .drag-sort-item.dragging {
-  opacity: 0.58;
+  visibility: hidden;
+  box-sizing: border-box;
+  height: var(--drag-placeholder-height, 56px) !important;
+  min-height: var(--drag-placeholder-height, 56px) !important;
+  max-height: var(--drag-placeholder-height, 56px) !important;
+  overflow: hidden !important;
+}
+
+.drag-sort-item.drag-insert-before::before,
+.drag-sort-item.drag-insert-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  z-index: 20;
+  height: 4px;
+  border-radius: 999px;
+  background: #fbbf24;
+  box-shadow: 0 0 10px rgba(251,191,36,0.9);
+  pointer-events: none;
+}
+
+.drag-sort-item.drag-insert-before::before { top: -8px; }
+.drag-sort-item.drag-insert-after::after { bottom: -8px; }
+
+.drag-ghost {
+  position: fixed !important;
+  z-index: 99999 !important;
+  max-height: 180px;
+  overflow: hidden;
+  opacity: 0.92;
+  pointer-events: none !important;
+  transform: scale(1.015) rotate(0.25deg);
   border-color: #fbbf24 !important;
-  box-shadow: 0 0 0 2px rgba(251,191,36,0.25);
+  box-shadow: 0 18px 42px rgba(0,0,0,0.5), 0 0 0 3px rgba(251,191,36,0.48) !important;
+  transition: top 0.04s linear, transform 0.12s ease !important;
+}
+
+.drag-ghost::after {
+  content: '移動中';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #fbbf24;
+  color: #1e1b4b;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.2;
 }
 
 .admin-category-card {

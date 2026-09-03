@@ -1,4 +1,4 @@
-// v20260903-32: 管理者設定の店舗・カテゴリー・設問をマウス/タッチのドラッグで並べ替え可能に変更
+// v20260903-33: 管理者設定のドラッグ下方向判定とドラッグ中の視覚表示を改善
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -3034,11 +3034,26 @@ function setupDragSort(container, itemSelector, onReorder) {
   const orderFromDom = () => directItems().map(element => Number(element.dataset.dragIndex));
   const originalOrder = orderFromDom();
   let draggedItem = null;
+  let draggedHandle = null;
+  let dragGhost = null;
   let active = false;
 
+  const clearInsertMarkers = () => {
+    directItems().forEach(element => element.classList.remove('drag-insert-before', 'drag-insert-after'));
+  };
+
   const clearDragState = () => {
-    directItems().forEach(element => element.classList.remove('dragging'));
+    clearInsertMarkers();
+    directItems().forEach(element => {
+      element.classList.remove('dragging');
+      element.style.removeProperty('--drag-placeholder-height');
+    });
+    if (draggedHandle) draggedHandle.setAttribute('aria-grabbed', 'false');
+    if (dragGhost) dragGhost.remove();
+    document.body.classList.remove('drag-sort-active');
     draggedItem = null;
+    draggedHandle = null;
+    dragGhost = null;
     active = false;
   };
 
@@ -3059,65 +3074,68 @@ function setupDragSort(container, itemSelector, onReorder) {
     if (changed) onReorder(nextOrder);
   };
 
-  const moveBesideTarget = (targetItem, clientY) => {
-    if (!draggedItem || !targetItem || targetItem === draggedItem || targetItem.parentElement !== container) return;
-    const rect = targetItem.getBoundingClientRect();
-    if (clientY < rect.top + rect.height / 2) {
-      container.insertBefore(draggedItem, targetItem);
+  const moveToPointerPosition = clientY => {
+    if (!draggedItem) return;
+    const candidates = directItems().filter(element => element !== draggedItem);
+    const beforeItem = candidates.find(element => {
+      const rect = element.getBoundingClientRect();
+      return clientY < rect.top + rect.height / 2;
+    });
+
+    clearInsertMarkers();
+    if (beforeItem) {
+      container.insertBefore(draggedItem, beforeItem);
+      beforeItem.classList.add('drag-insert-before');
     } else {
-      container.insertBefore(draggedItem, targetItem.nextSibling);
+      container.appendChild(draggedItem);
+      candidates[candidates.length - 1]?.classList.add('drag-insert-after');
     }
   };
 
   directItems().forEach(item => {
     const handle = item.querySelector('.drag-handle');
     if (!handle) return;
-    handle.draggable = true;
-
-    handle.addEventListener('dragstart', event => {
-      draggedItem = item;
-      active = true;
-      item.classList.add('dragging');
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', item.dataset.dragIndex || '');
-    });
-
-    item.addEventListener('dragover', event => {
-      if (!active || !draggedItem) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      moveBesideTarget(item, event.clientY);
-    });
-
-    item.addEventListener('drop', event => {
-      if (!active) return;
-      event.preventDefault();
-      moveBesideTarget(item, event.clientY);
-      commitOrder();
-    });
-
-    handle.addEventListener('dragend', () => {
-      if (active) restoreOriginalOrder();
-    });
+    handle.draggable = false;
+    handle.setAttribute('aria-grabbed', 'false');
 
     handle.addEventListener('pointerdown', event => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
       event.preventDefault();
       draggedItem = item;
+      draggedHandle = handle;
       active = true;
+      const itemRect = item.getBoundingClientRect();
+      const pointerOffsetY = event.clientY - itemRect.top;
+
+      dragGhost = item.cloneNode(true);
+      dragGhost.classList.remove('dragging', 'drag-insert-before', 'drag-insert-after');
+      dragGhost.classList.add('drag-ghost');
+      dragGhost.removeAttribute('data-drag-index');
+      dragGhost.setAttribute('aria-hidden', 'true');
+      dragGhost.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+      dragGhost.style.left = `${itemRect.left}px`;
+      dragGhost.style.top = `${itemRect.top}px`;
+      dragGhost.style.width = `${itemRect.width}px`;
+      document.body.appendChild(dragGhost);
+
       item.classList.add('dragging');
+      item.style.setProperty('--drag-placeholder-height', `${Math.min(itemRect.height, 64)}px`);
+      handle.setAttribute('aria-grabbed', 'true');
+      document.body.classList.add('drag-sort-active');
+      try { handle.setPointerCapture(event.pointerId); } catch (_) {}
 
       const handlePointerMove = moveEvent => {
         if (!active || !draggedItem) return;
         moveEvent.preventDefault();
         if (moveEvent.clientY < 80) window.scrollBy(0, -14);
         if (moveEvent.clientY > window.innerHeight - 80) window.scrollBy(0, 14);
-        const elementAtPoint = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-        const targetItem = elementAtPoint?.closest(itemSelector);
-        moveBesideTarget(targetItem, moveEvent.clientY);
+        if (dragGhost) dragGhost.style.top = `${moveEvent.clientY - Math.min(pointerOffsetY, 42)}px`;
+        moveToPointerPosition(moveEvent.clientY);
       };
       const finishPointerDrag = endEvent => {
         if (endEvent.type === 'pointercancel') restoreOriginalOrder();
         else commitOrder();
+        try { handle.releasePointerCapture(event.pointerId); } catch (_) {}
         document.removeEventListener('pointermove', handlePointerMove);
         document.removeEventListener('pointerup', finishPointerDrag);
         document.removeEventListener('pointercancel', finishPointerDrag);
