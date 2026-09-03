@@ -1,4 +1,4 @@
-// v20260903-31: 出力名の「店店」解消、必須欄の強調、温湿度必須化、基本情報修正、操作ガイドを追加
+// v20260903-32: 管理者設定の店舗・カテゴリー・設問をマウス/タッチのドラッグで並べ替え可能に変更
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -280,6 +280,7 @@ const historyEditor = document.getElementById('history-editor');
 const btnHistoryRecalc = document.getElementById('btn-history-recalc');
 const btnSaveHistory = document.getElementById('btn-save-history');
 let loadedHistoryRecord = null;
+const collapsedAdminCategories = new WeakSet();
 
 // Initialize
 async function init() {
@@ -3017,14 +3018,130 @@ async function saveHistoryEditorToCloud() {
   }
 }
 
+function reorderArrayByOriginalIndexes(targetArray, originalIndexes) {
+  if (!Array.isArray(targetArray) || !Array.isArray(originalIndexes)) return false;
+  if (originalIndexes.length !== targetArray.length) return false;
+  const uniqueIndexes = new Set(originalIndexes);
+  if (uniqueIndexes.size !== targetArray.length || originalIndexes.some(index => index < 0 || index >= targetArray.length)) return false;
+  const snapshot = targetArray.slice();
+  targetArray.splice(0, targetArray.length, ...originalIndexes.map(index => snapshot[index]));
+  return true;
+}
+
+function setupDragSort(container, itemSelector, onReorder) {
+  if (!container) return;
+  const directItems = () => Array.from(container.children).filter(element => element.matches(itemSelector));
+  const orderFromDom = () => directItems().map(element => Number(element.dataset.dragIndex));
+  const originalOrder = orderFromDom();
+  let draggedItem = null;
+  let active = false;
+
+  const clearDragState = () => {
+    directItems().forEach(element => element.classList.remove('dragging'));
+    draggedItem = null;
+    active = false;
+  };
+
+  const restoreOriginalOrder = () => {
+    const byIndex = new Map(directItems().map(element => [Number(element.dataset.dragIndex), element]));
+    originalOrder.forEach(index => {
+      const element = byIndex.get(index);
+      if (element) container.appendChild(element);
+    });
+    clearDragState();
+  };
+
+  const commitOrder = () => {
+    if (!active) return;
+    const nextOrder = orderFromDom();
+    const changed = nextOrder.some((index, position) => index !== originalOrder[position]);
+    clearDragState();
+    if (changed) onReorder(nextOrder);
+  };
+
+  const moveBesideTarget = (targetItem, clientY) => {
+    if (!draggedItem || !targetItem || targetItem === draggedItem || targetItem.parentElement !== container) return;
+    const rect = targetItem.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) {
+      container.insertBefore(draggedItem, targetItem);
+    } else {
+      container.insertBefore(draggedItem, targetItem.nextSibling);
+    }
+  };
+
+  directItems().forEach(item => {
+    const handle = item.querySelector('.drag-handle');
+    if (!handle) return;
+    handle.draggable = true;
+
+    handle.addEventListener('dragstart', event => {
+      draggedItem = item;
+      active = true;
+      item.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', item.dataset.dragIndex || '');
+    });
+
+    item.addEventListener('dragover', event => {
+      if (!active || !draggedItem) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      moveBesideTarget(item, event.clientY);
+    });
+
+    item.addEventListener('drop', event => {
+      if (!active) return;
+      event.preventDefault();
+      moveBesideTarget(item, event.clientY);
+      commitOrder();
+    });
+
+    handle.addEventListener('dragend', () => {
+      if (active) restoreOriginalOrder();
+    });
+
+    handle.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      draggedItem = item;
+      active = true;
+      item.classList.add('dragging');
+
+      const handlePointerMove = moveEvent => {
+        if (!active || !draggedItem) return;
+        moveEvent.preventDefault();
+        if (moveEvent.clientY < 80) window.scrollBy(0, -14);
+        if (moveEvent.clientY > window.innerHeight - 80) window.scrollBy(0, 14);
+        const elementAtPoint = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+        const targetItem = elementAtPoint?.closest(itemSelector);
+        moveBesideTarget(targetItem, moveEvent.clientY);
+      };
+      const finishPointerDrag = endEvent => {
+        if (endEvent.type === 'pointercancel') restoreOriginalOrder();
+        else commitOrder();
+        document.removeEventListener('pointermove', handlePointerMove);
+        document.removeEventListener('pointerup', finishPointerDrag);
+        document.removeEventListener('pointercancel', finishPointerDrag);
+      };
+      document.addEventListener('pointermove', handlePointerMove, { passive: false });
+      document.addEventListener('pointerup', finishPointerDrag);
+      document.addEventListener('pointercancel', finishPointerDrag);
+    });
+  });
+}
+
 function renderAdminRoute() {
   adminInspectionBaseMonth.value = inspectionCountSettings.baseYearMonth;
   adminInspectionBaseCount.value = inspectionCountSettings.baseCount;
   adminRouteList.innerHTML = '';
   appStores.forEach((store, idx) => {
     const li = document.createElement('li');
+    li.className = 'route-draggable drag-sort-item';
+    li.dataset.dragIndex = idx;
     li.innerHTML = `
-      <span>${store}</span>
+      <div class="draggable-main">
+        <button type="button" class="drag-handle" aria-label="${store}をドラッグして並べ替え" title="ドラッグして並べ替え">⠿</button>
+        <span>${store}</span>
+      </div>
       <div class="actions">
         <button class="btn btn-secondary btn-small" onclick="moveStore(${idx}, -1)">↑</button>
         <button class="btn btn-secondary btn-small" onclick="moveStore(${idx}, 1)">↓</button>
@@ -3032,6 +3149,9 @@ function renderAdminRoute() {
       </div>
     `;
     adminRouteList.appendChild(li);
+  });
+  setupDragSort(adminRouteList, '.route-draggable', order => {
+    if (reorderArrayByOriginalIndexes(appStores, order)) renderAdminRoute();
   });
 }
 
@@ -3064,10 +3184,13 @@ function renderAdminChecklist() {
   adminCategoriesContainer.innerHTML = '';
   appChecklist.forEach((cat, cIdx) => {
     const catCard = document.createElement('div');
-    catCard.className = 'admin-category-card';
+    catCard.className = 'admin-category-card drag-sort-item';
+    catCard.dataset.dragIndex = cIdx;
+    const isCollapsed = collapsedAdminCategories.has(cat);
+    if (isCollapsed) catCard.classList.add('collapsed');
     
     const cHeader = document.createElement('div');
-    cHeader.style = "display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;";
+    cHeader.className = 'admin-category-header';
     
     const editionSelectHTML = `
       <select onchange="updateCatEdition(${cIdx}, this.value)" style="width: auto; padding: 4px;">
@@ -3079,23 +3202,30 @@ function renderAdminChecklist() {
     `;
 
     cHeader.innerHTML = `
-      <div style="display:flex; gap:10px; flex:1;">
+      <div class="admin-category-fields">
+        <button type="button" class="drag-handle" aria-label="${cat.category}カテゴリーをドラッグして並べ替え" title="カテゴリーをドラッグして並べ替え">⠿</button>
         <input type="text" value="${cat.category}" onchange="updateCatName(${cIdx}, this.value)" style="font-weight:bold; flex:1;">
         ${editionSelectHTML}
       </div>
-      <button class="btn btn-danger btn-small" onclick="deleteCategory(${cIdx})" style="margin-left:10px;">カテゴリ削除</button>
+      <div class="admin-category-actions">
+        <button type="button" class="btn btn-secondary btn-small" onclick="toggleAdminCategory(${cIdx})">${isCollapsed ? '設問を開く' : '設問を閉じる'}</button>
+        <button class="btn btn-danger btn-small" onclick="deleteCategory(${cIdx})">カテゴリ削除</button>
+      </div>
     `;
     catCard.appendChild(cHeader);
 
     const itemsContainer = document.createElement('div');
+    itemsContainer.className = 'admin-items-container';
     cat.items.forEach((item, iIdx) => {
       const row = document.createElement('div');
-      row.className = 'admin-item-row';
+      row.className = 'admin-item-row drag-sort-item';
+      row.dataset.dragIndex = iIdx;
       const ptsStr = item.points.join(',');
       const isPri = item.isPriority ? 'checked' : '';
       
       row.innerHTML = `
-        <div style="display:flex; gap:8px;">
+        <div class="admin-item-heading">
+          <button type="button" class="drag-handle" aria-label="設問${iIdx + 1}をドラッグして並べ替え" title="設問をドラッグして並べ替え">⠿</button>
           <input type="text" value="${item.text}" onchange="updateItemText(${cIdx}, ${iIdx}, this.value)" style="flex:1;">
           <button class="btn btn-danger btn-small" onclick="deleteItem(${cIdx}, ${iIdx})">🗑️</button>
         </div>
@@ -3109,17 +3239,41 @@ function renderAdminChecklist() {
       `;
       itemsContainer.appendChild(row);
     });
-    catCard.appendChild(itemsContainer);
+    if (!isCollapsed) {
+      setupDragSort(itemsContainer, '.admin-item-row', order => {
+        if (reorderArrayByOriginalIndexes(appChecklist[cIdx].items, order)) renderAdminChecklist();
+      });
+      catCard.appendChild(itemsContainer);
 
-    const btnAddItem = document.createElement('button');
-    btnAddItem.className = 'btn btn-secondary btn-small';
-    btnAddItem.textContent = '+ 設問を追加';
-    btnAddItem.onclick = () => addItem(cIdx);
-    catCard.appendChild(btnAddItem);
+      const btnAddItem = document.createElement('button');
+      btnAddItem.className = 'btn btn-secondary btn-small';
+      btnAddItem.textContent = '+ 設問を追加';
+      btnAddItem.onclick = () => addItem(cIdx);
+      catCard.appendChild(btnAddItem);
+    }
 
     adminCategoriesContainer.appendChild(catCard);
   });
+  setupDragSort(adminCategoriesContainer, '.admin-category-card', order => {
+    if (reorderArrayByOriginalIndexes(appChecklist, order)) renderAdminChecklist();
+  });
 }
+
+window.toggleAdminCategory = cIdx => {
+  const category = appChecklist[cIdx];
+  if (!category) return;
+  if (collapsedAdminCategories.has(category)) collapsedAdminCategories.delete(category);
+  else collapsedAdminCategories.add(category);
+  renderAdminChecklist();
+};
+window.collapseAllAdminCategories = () => {
+  appChecklist.forEach(category => collapsedAdminCategories.add(category));
+  renderAdminChecklist();
+};
+window.expandAllAdminCategories = () => {
+  appChecklist.forEach(category => collapsedAdminCategories.delete(category));
+  renderAdminChecklist();
+};
 
 window.updateCatName = (cIdx, val) => { appChecklist[cIdx].category = val; };
 window.updateCatEdition = (cIdx, val) => { appChecklist[cIdx].edition = val; };

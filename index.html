@@ -18,7 +18,7 @@
     <!-- Header -->
     <header class="app-header">
       <div>
-        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260903-31</span></h1>
+        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260903-32</span></h1>
         <div id="current-store-header" class="hidden text-sm text-secondary"></div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
@@ -178,6 +178,7 @@
             <input type="text" id="new-store-input" placeholder="新しい店舗名">
             <button id="btn-add-store" class="btn btn-primary">追加</button>
           </div>
+          <p class="drag-help">⠿ をつかんでドラッグすると、店舗の巡回順を変更できます。上下ボタンでも調整できます。</p>
           <ul id="admin-route-list" class="route-list editable">
             <!-- Populated by JS -->
           </ul>
@@ -186,8 +187,13 @@
         <!-- Checklist Settings -->
         <div id="admin-checklist-view" class="admin-view hidden">
           <p class="text-secondary text-sm mb-4">
-            配点はカンマ区切りで入力してください（例: 5,1,0 または 10,8,4,0）。
+            配点はカンマ区切りで入力してください（例: 5,1,0 または 10,8,4,0）。<br>
+            ⠿ をつかんでドラッグすると、カテゴリーとカテゴリー内の設問順を変更できます。
           </p>
+          <div class="category-collapse-actions mb-4">
+            <button type="button" class="btn btn-secondary btn-small" onclick="collapseAllAdminCategories()">全カテゴリーを閉じる</button>
+            <button type="button" class="btn btn-secondary btn-small" onclick="expandAllAdminCategories()">全カテゴリーを開く</button>
+          </div>
           <div id="admin-categories-container">
             <!-- Populated by JS -->
           </div>
@@ -296,7 +302,7 @@
 
   </div>
 
-  <script src="data.js?v=20260903_31"></script>
-  <script src="app_trial_safe_20260819_15.js?v=20260903_31"></script>
+  <script src="data.js?v=20260903_32"></script>
+  <script src="app_trial_safe_20260819_15.js?v=20260903_32"></script>
 </body>
 </html>
