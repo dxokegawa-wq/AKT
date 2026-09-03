@@ -1,4 +1,4 @@
-// v20260819-30: 旧クラウド空文字が残っていても再送した編別総評を優先する互換保存を追加
+// v20260903-31: 出力名の「店店」解消、必須欄の強調、温湿度必須化、基本情報修正、操作ガイドを追加
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -201,6 +201,7 @@ const currentStoreHeader = document.getElementById('current-store-header');
 const headerScoreDiv = document.getElementById('header-score');
 const totalScoreDisplay = document.getElementById('total-score-display');
 const btnOpenAdmin = document.getElementById('btn-open-admin');
+const btnOpenGuide = document.getElementById('btn-open-guide');
 
 // Scoring Screen Elements
 const storeProgressText = document.getElementById('store-progress-text');
@@ -209,6 +210,7 @@ const questionsContainer = document.getElementById('questions-container');
 const btnPrevStore = document.getElementById('btn-prev-store');
 const btnNextStore = document.getElementById('btn-next-store');
 const btnFinish = document.getElementById('btn-finish');
+const btnEditBasicInfo = document.getElementById('btn-edit-basic-info');
 
 // Store Summary Elements
 const storeCommentInput = document.getElementById('store-comment');
@@ -226,6 +228,19 @@ const staffSummarySection = document.getElementById('staff-summary-section');
 const btnSendData = document.getElementById('btn-send-data');
 const btnBackToSetup = document.getElementById('btn-back-to-setup');
 const btnEditScoring = document.getElementById('btn-edit-scoring');
+const btnEditBasicInfoResult = document.getElementById('btn-edit-basic-info-result');
+
+// Basic Information Edit Modal
+const basicInfoModal = document.getElementById('basic-info-modal');
+const basicInfoDateInput = document.getElementById('basic-info-date');
+const basicInfoEvaluatorInput = document.getElementById('basic-info-evaluator');
+const btnCancelBasicInfo = document.getElementById('btn-cancel-basic-info');
+const btnSaveBasicInfo = document.getElementById('btn-save-basic-info');
+
+// Operation Guide Modal
+const guideModal = document.getElementById('guide-modal');
+const btnCloseGuide = document.getElementById('btn-close-guide');
+const btnGuideOk = document.getElementById('btn-guide-ok');
 
 // HQ Elements
 const btnFetchAndDownload = document.getElementById('btn-fetch-and-download');
@@ -386,6 +401,13 @@ async function init() {
   if (btnSendData) btnSendData.addEventListener('click', sendDataToCloud);
   if (btnEditScoring) btnEditScoring.addEventListener('click', returnToScoringFromResult);
   if (btnFetchAndDownload) btnFetchAndDownload.addEventListener('click', fetchAndDownloadExcel);
+  if (btnEditBasicInfo) btnEditBasicInfo.addEventListener('click', openBasicInfoEditor);
+  if (btnEditBasicInfoResult) btnEditBasicInfoResult.addEventListener('click', openBasicInfoEditor);
+  if (btnCancelBasicInfo) btnCancelBasicInfo.addEventListener('click', () => basicInfoModal.classList.add('hidden'));
+  if (btnSaveBasicInfo) btnSaveBasicInfo.addEventListener('click', saveBasicInfoEdits);
+  if (btnOpenGuide) btnOpenGuide.addEventListener('click', () => guideModal.classList.remove('hidden'));
+  if (btnCloseGuide) btnCloseGuide.addEventListener('click', () => guideModal.classList.add('hidden'));
+  if (btnGuideOk) btnGuideOk.addEventListener('click', () => guideModal.classList.add('hidden'));
 
   const persistSummaryInputs = () => {
     const routeStores = getRouteStores();
@@ -882,6 +904,36 @@ function scrollPageToTop() {
   });
 }
 
+function openBasicInfoEditor() {
+  basicInfoDateInput.value = state.date || dateSelect.value || getTodayIsoDate();
+  basicInfoEvaluatorInput.value = state.evaluator || evaluatorInput.value || '';
+  basicInfoModal.classList.remove('hidden');
+  requestAnimationFrame(() => basicInfoEvaluatorInput.focus());
+}
+
+async function saveBasicInfoEdits() {
+  const nextDate = basicInfoDateInput.value;
+  const nextEvaluator = basicInfoEvaluatorInput.value.trim();
+  if (!nextDate) {
+    alert('審査日を選択してください。');
+    basicInfoDateInput.focus();
+    return;
+  }
+  if (!nextEvaluator) {
+    alert('審査員名を入力してください。');
+    basicInfoEvaluatorInput.focus();
+    return;
+  }
+
+  state.date = nextDate;
+  state.evaluator = nextEvaluator;
+  dateSelect.value = nextDate;
+  evaluatorInput.value = nextEvaluator;
+  await saveStateToIDB();
+  basicInfoModal.classList.add('hidden');
+  alert('審査日・審査員名を修正しました。\n送信済みの場合は、修正後の内容を再送信してください。');
+}
+
 // Route Preview
 function getRouteStores() {
   if (state.edition === 'hall') {
@@ -1184,6 +1236,7 @@ async function handleStoreCompletion(isFinal) {
   
   const missingScores = [];
   const missingRequiredComments = [];
+  const missingRequiredFields = [];
   filteredChecklist.forEach(cat => {
     cat.items.forEach(item => {
       const answer = storeAnswers[item.id] || {};
@@ -1191,8 +1244,24 @@ async function handleStoreCompletion(isFinal) {
       if (requiresCommentForScore(item, answer.score) && !String(answer.comment || '').trim()) {
         missingRequiredComments.push({ category: cat.category, item, field: 'comment' });
       }
+      if (item.hasTempHumidity) {
+        if (!String(answer.temperature ?? '').trim()) {
+          missingRequiredFields.push({ category: cat.category, item, field: 'temperature' });
+        }
+        if (!String(answer.humidity ?? '').trim()) {
+          missingRequiredFields.push({ category: cat.category, item, field: 'humidity' });
+        }
+      }
     });
   });
+
+  if (missingRequiredFields.length > 0) {
+    const missingLabels = [...new Set(missingRequiredFields.map(issue => issue.field === 'temperature' ? '温度' : '湿度'))];
+    alert(`${missingLabels.join('・')}が未入力です。入力が必要な項目へ移動します。`);
+    await saveStateToIDB();
+    jumpToChecklistIssue(missingRequiredFields[0]);
+    return;
+  }
 
   if (missingRequiredComments.length > 0) {
     alert(`必須コメントの未入力が ${missingRequiredComments.length} 個あります。最初の該当項目へ移動します。`);
@@ -1270,6 +1339,10 @@ function jumpToChecklistIssue(issue) {
       const commentInput = card.querySelector('.comment-input');
       commentInput?.classList.add('input-error');
       commentInput?.focus({ preventScroll: true });
+    } else if (issue.field === 'temperature' || issue.field === 'humidity') {
+      const requiredInput = card.querySelector(`[data-required-field="${issue.field}"]`);
+      requiredInput?.classList.add('input-error');
+      requiredInput?.focus({ preventScroll: true });
     }
     setTimeout(() => card.classList.remove('needs-attention'), 2600);
   });
@@ -1452,6 +1525,7 @@ function renderQuestions(categoryName) {
     updateCommentRequirement = (score) => {
       const required = requiresCommentForScore(item, score);
       requiredMark.classList.toggle('hidden', !required);
+      commentInput.classList.toggle('required-input', required);
       commentInput.required = required;
       commentInput.setAttribute('aria-required', required ? 'true' : 'false');
       commentInput.placeholder = required ? 'コメントを入力してください（必須）' : '改善点・コメント等...';
@@ -1540,28 +1614,41 @@ function renderQuestions(categoryName) {
     // Temp/Humidity Inputs (if flagged)
     if (item.hasTempHumidity) {
       const metricDiv = document.createElement('div');
-      metricDiv.style = "display: flex; gap: 12px; margin-top: 10px;";
+      metricDiv.className = 'required-metrics';
+
+      const metricLabel = document.createElement('div');
+      metricLabel.className = 'required-metrics-label';
+      metricLabel.innerHTML = '温度・湿度 <span class="required-mark">必須</span>　※両方入力してください';
+      metricDiv.appendChild(metricLabel);
       
       const tInput = document.createElement('input');
       tInput.type = 'number';
-      tInput.placeholder = '温度(℃)';
-      tInput.style = "padding: 8px; flex: 1; font-size: 0.9rem;";
-      if (storeAnswers[item.id] && storeAnswers[item.id].temperature) tInput.value = storeAnswers[item.id].temperature;
-      tInput.addEventListener('change', async (e) => {
+      tInput.placeholder = '温度（℃）必須';
+      tInput.className = 'required-field';
+      tInput.dataset.requiredField = 'temperature';
+      tInput.required = true;
+      tInput.setAttribute('aria-label', '温度（必須）');
+      if (storeAnswers[item.id] && storeAnswers[item.id].temperature !== undefined) tInput.value = storeAnswers[item.id].temperature;
+      tInput.addEventListener('input', (e) => {
         if (!storeAnswers[item.id]) storeAnswers[item.id] = {};
         storeAnswers[item.id].temperature = e.target.value;
-        await saveStateToIDB();
+        if (String(e.target.value || '').trim()) tInput.classList.remove('input-error');
+        scheduleStateSave();
       });
 
       const hInput = document.createElement('input');
       hInput.type = 'number';
-      hInput.placeholder = '湿度(%)';
-      hInput.style = "padding: 8px; flex: 1; font-size: 0.9rem;";
-      if (storeAnswers[item.id] && storeAnswers[item.id].humidity) hInput.value = storeAnswers[item.id].humidity;
-      hInput.addEventListener('change', async (e) => {
+      hInput.placeholder = '湿度（%）必須';
+      hInput.className = 'required-field';
+      hInput.dataset.requiredField = 'humidity';
+      hInput.required = true;
+      hInput.setAttribute('aria-label', '湿度（必須）');
+      if (storeAnswers[item.id] && storeAnswers[item.id].humidity !== undefined) hInput.value = storeAnswers[item.id].humidity;
+      hInput.addEventListener('input', (e) => {
         if (!storeAnswers[item.id]) storeAnswers[item.id] = {};
         storeAnswers[item.id].humidity = e.target.value;
-        await saveStateToIDB();
+        if (String(e.target.value || '').trim()) hInput.classList.remove('input-error');
+        scheduleStateSave();
       });
 
       metricDiv.appendChild(tInput);
@@ -2718,7 +2805,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // 1店舗分のエクセルデータをバッファ化してZIPに追加
       const buffer = await workbook.xlsx.writeBuffer();
-      zip.file(`${storeName}店_AKT活動審査表.xlsx`, buffer);
+      // 店舗マスタには既に「店」が含まれるため、ファイル名へ追加しない。
+      zip.file(`${storeName}_AKT活動審査表.xlsx`, buffer);
     }
 
     // ZIP生成とダウンロード

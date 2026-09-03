@@ -18,11 +18,12 @@
     <!-- Header -->
     <header class="app-header">
       <div>
-        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260819-30</span></h1>
+        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20260903-31</span></h1>
         <div id="current-store-header" class="hidden text-sm text-secondary"></div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
         <div id="header-score" class="hidden">Total: <span id="total-score-display">0</span></div>
+        <button id="btn-open-guide" class="btn-icon header-help-btn" aria-label="操作ガイドを開く" title="操作ガイド">?</button>
         <button id="btn-open-admin" class="btn-icon" aria-label="設定">⚙️</button>
       </div>
     </header>
@@ -77,7 +78,11 @@
       <div class="store-progress">
         <span id="store-progress-text"></span>
       </div>
+      <div class="scoring-quick-actions">
+        <button id="btn-edit-basic-info" class="btn btn-secondary btn-small">審査日・審査員名を修正</button>
+      </div>
       <div class="category-tabs" id="category-tabs"></div>
+      <p class="category-operation-hint">カテゴリーは上のタブで切り替えます。見えないタブは横にスライドしてください。</p>
       
       <div id="questions-container" class="questions-container">
         <!-- Questions will be dynamically injected here -->
@@ -88,12 +93,12 @@
         
         <div id="hall-store-comment-section" class="form-group">
           <label id="hall-store-comment-label" for="store-comment">ホール編 総評コメント <span id="hall-summary-required" class="required-mark">必須</span></label>
-          <textarea id="store-comment" class="comment-input" rows="3" placeholder="この店舗についてのコメントを入力..."></textarea>
+          <textarea id="store-comment" class="comment-input required-input" rows="3" placeholder="この店舗についてのコメントを入力..."></textarea>
         </div>
 
         <div id="backyard-store-comment-section" class="form-group hidden">
           <label for="backyard-store-comment">バックヤード編 総評コメント <span class="required-mark">必須</span></label>
-          <textarea id="backyard-store-comment" class="comment-input" rows="3" placeholder="バックヤードについてのコメントを入力..."></textarea>
+          <textarea id="backyard-store-comment" class="comment-input required-input" rows="3" placeholder="バックヤードについてのコメントを入力..."></textarea>
         </div>
 
         <div id="staff-summary-section">
@@ -122,6 +127,7 @@
         <div class="action-grid mt-4">
           <button id="btn-send-data" class="btn btn-primary btn-large">採点データを本部へ送信</button>
           <button id="btn-edit-scoring" class="btn btn-secondary btn-large mt-2">採点内容を修正する</button>
+          <button id="btn-edit-basic-info-result" class="btn btn-secondary btn-large mt-2">審査日・審査員名を修正</button>
           <button id="btn-back-to-setup" class="btn btn-secondary btn-large mt-2">トップに戻る</button>
         </div>
       </div>
@@ -228,9 +234,69 @@
       </div>
     </div>
 
+    <!-- Basic Information Edit Modal -->
+    <div id="basic-info-modal" class="modal hidden">
+      <div class="modal-content glass">
+        <h3>審査日・審査員名の修正</h3>
+        <p class="text-secondary text-sm mt-2">採点済みの内容は消えません。送信後に修正した場合は、修正後に再送信してください。</p>
+        <div class="form-group mt-4">
+          <label for="basic-info-date">審査日</label>
+          <input type="date" id="basic-info-date">
+        </div>
+        <div class="form-group">
+          <label for="basic-info-evaluator">審査員名</label>
+          <input type="text" id="basic-info-evaluator" placeholder="氏名を入力">
+        </div>
+        <div class="action-grid modal-two-actions">
+          <button id="btn-cancel-basic-info" class="btn btn-secondary">キャンセル</button>
+          <button id="btn-save-basic-info" class="btn btn-primary">修正内容を保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- In-app Operation Guide -->
+    <div id="guide-modal" class="modal hidden">
+      <div class="modal-content glass guide-content">
+        <div class="guide-heading">
+          <div>
+            <p class="guide-kicker">AKT活動審査</p>
+            <h2>操作ガイド</h2>
+          </div>
+          <button id="btn-close-guide" class="btn-icon" aria-label="操作ガイドを閉じる">×</button>
+        </div>
+
+        <section class="guide-step">
+          <span class="guide-step-number">1</span>
+          <div>
+            <h3>基本情報を入力して開始</h3>
+            <p>審査日・審査編・審査員名・開始パスワードを入力し、「巡回審査を開始する」を押します。</p>
+          </div>
+        </section>
+
+        <section class="guide-step guide-step-block">
+          <div class="guide-step-title"><span class="guide-step-number">2</span><h3>カテゴリーを切り替える</h3></div>
+          <img src="manual_category_tabs.png" class="guide-image" alt="採点画面上部のカテゴリータブの切り抜き">
+          <p>採点画面の一番上にカテゴリー表があります。タブを押すと項目が切り替わります。右側が見えない場合は、タブ部分を左右にスライドしてください。</p>
+        </section>
+
+        <section class="guide-step guide-step-block">
+          <div class="guide-step-title"><span class="guide-step-number">3</span><h3>色付きの必須欄を入力する</h3></div>
+          <img src="manual_required_fields.png" class="guide-image" alt="必須コメントと温度・湿度入力欄の切り抜き">
+          <p><strong>黄色の入力欄と「必須」表示は入力が必要です。</strong>低評価時のコメント、強化項目のコメント、店舗総評、温度・湿度が対象です。未入力のまま完了しようとすると該当箇所へ移動します。</p>
+        </section>
+
+        <section class="guide-step guide-step-block">
+          <div class="guide-step-title"><span class="guide-step-number">4</span><h3>入力後でも修正できる</h3></div>
+          <p>採点中は「審査日・審査員名を修正」、完了画面では「採点内容を修正する」を押してください。入力済みデータを残したまま直せます。送信済みの内容を直した場合は、必ず再送信してください。</p>
+        </section>
+
+        <button id="btn-guide-ok" class="btn btn-primary btn-large">閉じる</button>
+      </div>
+    </div>
+
   </div>
 
-  <script src="data.js?v=20260819_30"></script>
-  <script src="app_trial_safe_20260819_15.js?v=20260819_30"></script>
+  <script src="data.js?v=20260903_31"></script>
+  <script src="app_trial_safe_20260819_15.js?v=20260903_31"></script>
 </body>
 </html>
