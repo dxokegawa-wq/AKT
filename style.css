@@ -227,6 +227,8 @@ input:focus, select:focus, textarea:focus {
 
 .scoring-quick-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
   margin: -6px 0 6px;
 }
@@ -682,6 +684,23 @@ input:focus, select:focus, textarea:focus {
 .modal-two-actions {
   grid-template-columns: 1fr 1fr;
 }
+
+.review-abort-trigger {
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+}
+
+.review-abort-dialog {
+  margin: auto;
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+.review-abort-dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+.review-abort-dialog .btn-danger { background: #b91c1c; }
+.review-abort-dialog .btn-danger:hover { background: #991b1b; }
+.review-abort-dialog .btn:disabled { opacity: 0.6; cursor: wait; }
+.review-abort-error { color: #fecaca; }
 
 .guide-content {
   max-width: 560px;

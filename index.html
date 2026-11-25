@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <script>window.onerror = function(msg, url, line) { alert('Error: ' + msg + '\nLine: ' + line); };</script>
   <title>AKT活動審査アプリ</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20261125_35">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
     <!-- Header -->
     <header class="app-header">
       <div>
-        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20261125-34</span></h1>
+        <h1>AKT活動審査 <span style="font-size:0.65rem;color:#fbbf24;vertical-align:middle;">v20261125-35</span></h1>
         <div id="current-store-header" class="hidden text-sm text-secondary"></div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px;">
@@ -80,6 +80,7 @@
       </div>
       <div class="scoring-quick-actions">
         <button id="btn-edit-basic-info" class="btn btn-secondary btn-small">審査日・審査員名を修正</button>
+        <button id="btn-abort-review" type="button" class="btn btn-secondary btn-small review-abort-trigger" aria-haspopup="dialog">審査を中止して最初に戻る</button>
       </div>
       <div class="category-tabs" id="category-tabs"></div>
       <p class="category-operation-hint">カテゴリーは上のタブで切り替えます。見えないタブは横にスライドしてください。</p>
@@ -260,6 +261,16 @@
       </div>
     </div>
 
+    <dialog id="abort-review-dialog" class="modal-content review-abort-dialog" aria-labelledby="abort-review-title" aria-describedby="abort-review-warning">
+      <h3 id="abort-review-title">審査を中止して最初に戻りますか？</h3>
+      <p id="abort-review-warning" class="text-secondary text-sm mt-2">入力した採点・コメント・写真は、この端末からすべて消えます。本部へ送信済みのデータは残ります。</p>
+      <p id="abort-review-error" class="review-abort-error text-sm mt-2 hidden" role="alert">中止の状態を端末に保存できませんでした。入力内容は残っています。もう一度お試しください。</p>
+      <div class="action-grid modal-two-actions mt-4">
+        <button id="btn-cancel-abort-review" type="button" class="btn btn-secondary" autofocus>審査を続ける</button>
+        <button id="btn-confirm-abort-review" type="button" class="btn btn-danger">中止して戻る</button>
+      </div>
+    </dialog>
+
     <!-- In-app Operation Guide -->
     <div id="guide-modal" class="modal hidden">
       <div class="modal-content glass guide-content">
@@ -294,6 +305,7 @@
         <section class="guide-step guide-step-block">
           <div class="guide-step-title"><span class="guide-step-number">4</span><h3>入力後でも修正できる</h3></div>
           <p>採点中は「審査日・審査員名を修正」、完了画面では「採点内容を修正する」を押してください。入力済みデータを残したまま直せます。送信済みの内容を直した場合は、必ず再送信してください。</p>
+          <p>やり直すときは、採点画面の上にある「審査を中止して最初に戻る」を押します。確認後、端末の途中入力を消して開始画面に戻ります。</p>
         </section>
 
         <button id="btn-guide-ok" class="btn btn-primary btn-large">閉じる</button>
@@ -302,7 +314,7 @@
 
   </div>
 
-  <script src="data.js?v=20261125_34"></script>
-  <script src="app_trial_safe_20260819_15.js?v=20261125_34"></script>
+  <script src="data.js?v=20261125_35"></script>
+  <script src="app_trial_safe_20260819_15.js?v=20261125_35"></script>
 </body>
 </html>

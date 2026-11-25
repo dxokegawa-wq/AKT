@@ -1,4 +1,4 @@
-// v20261125-34: 結果資料のシート名と年度見出しを審査日から設定
+// v20261125-35: 採点途中の審査を確認して中止できるように変更
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -115,7 +115,7 @@ function initDB() {
 let stateSaveQueue = Promise.resolve();
 let stateSaveTimer = null;
 
-function saveStateToIDB() {
+function saveStateToIDB({ requireSuccess = false } = {}) {
   // 呼び出し時点の状態をスナップショット化し、保存順を保証する。
   // トランザクション完了まで待つことで、採点直後の画面移動・再読込で値が欠落するのを防ぐ。
   const snapshot = JSON.parse(JSON.stringify(state));
@@ -131,6 +131,7 @@ function saveStateToIDB() {
       });
     } catch(e) {
       console.error("IDB save error", e);
+      if (requireSuccess) throw e;
     }
   });
   return stateSaveQueue;
@@ -211,6 +212,11 @@ const btnPrevStore = document.getElementById('btn-prev-store');
 const btnNextStore = document.getElementById('btn-next-store');
 const btnFinish = document.getElementById('btn-finish');
 const btnEditBasicInfo = document.getElementById('btn-edit-basic-info');
+const btnAbortReview = document.getElementById('btn-abort-review');
+const abortReviewDialog = document.getElementById('abort-review-dialog');
+const btnCancelAbortReview = document.getElementById('btn-cancel-abort-review');
+const btnConfirmAbortReview = document.getElementById('btn-confirm-abort-review');
+const abortReviewError = document.getElementById('abort-review-error');
 
 // Store Summary Elements
 const storeCommentInput = document.getElementById('store-comment');
@@ -398,6 +404,15 @@ async function init() {
   btnNextStore.addEventListener('click', () => handleStoreCompletion(false));
   btnFinish.addEventListener('click', () => handleStoreCompletion(true));
   btnBackToSetup.addEventListener('click', resetApp);
+  btnAbortReview.addEventListener('click', () => {
+    abortReviewError.classList.add('hidden');
+    abortReviewDialog.showModal();
+  });
+  btnCancelAbortReview.addEventListener('click', () => abortReviewDialog.close());
+  btnConfirmAbortReview.addEventListener('click', abortReview);
+  abortReviewDialog.addEventListener('cancel', event => {
+    if (btnConfirmAbortReview.disabled) event.preventDefault();
+  });
   
   if (btnSendData) btnSendData.addEventListener('click', sendDataToCloud);
   if (btnEditScoring) btnEditScoring.addEventListener('click', returnToScoringFromResult);
@@ -1687,18 +1702,50 @@ async function returnToScoringFromResult() {
   scrollPageToTop();
 }
 
-async function resetApp() {
-  const confirmReset = confirm("現在の入力データはすべて失われます。トップに戻りますか？");
-  if (!confirmReset) return;
-
-  setIdleState();
+function showFreshReviewSetup() {
   dateSelect.value = getTodayIsoDate();
   editionSelect.value = 'all';
   evaluatorInput.value = '';
   reviewerPasswordInput.value = '';
   renderRoutePreview();
-  await saveStateToIDB();
   switchScreen('setup');
+  scrollPageToTop();
+}
+
+async function abortReview() {
+  if (state.reviewStatus !== 'in_progress' || btnConfirmAbortReview.disabled) return;
+  btnConfirmAbortReview.disabled = true;
+  btnCancelAbortReview.disabled = true;
+  abortReviewError.classList.add('hidden');
+
+  const previousState = { ...state };
+  clearTimeout(stateSaveTimer);
+  setIdleState();
+
+  try {
+    await saveStateToIDB({ requireSuccess: true });
+  } catch (err) {
+    Object.assign(state, previousState);
+    scheduleStateSave();
+    abortReviewError.classList.remove('hidden');
+    return;
+  } finally {
+    btnConfirmAbortReview.disabled = false;
+    btnCancelAbortReview.disabled = false;
+  }
+
+  abortReviewDialog.close();
+  questionsContainer.replaceChildren();
+  showFreshReviewSetup();
+}
+
+async function resetApp() {
+  const confirmReset = confirm("現在の入力データはすべて失われます。トップに戻りますか？");
+  if (!confirmReset) return;
+
+  setIdleState();
+  await saveStateToIDB();
+  showFreshReviewSetup();
 }
 
 async function sendDataToCloud() {
