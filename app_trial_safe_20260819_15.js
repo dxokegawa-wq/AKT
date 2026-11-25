@@ -1,4 +1,4 @@
-// v20260903-33: 管理者設定のドラッグ下方向判定とドラッグ中の視覚表示を改善
+// v20261125-34: 結果資料のシート名と年度見出しを審査日から設定
 // App State & Data Management
 let appStores = [];
 let appChecklist = [];
@@ -1910,7 +1910,11 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
   try {
     const zip = new JSZip();
-    const dateStr = state.date || new Date().toISOString().split('T')[0];
+    const dateStr = state.date || getTodayIsoDate();
+    const fiscalMonths = getFiscalMonthsThrough(dateStr);
+    const resultYearMonth = fiscalMonths[fiscalMonths.length - 1];
+    const fiscalStartYear = Number(fiscalMonths[0]?.slice(0, 4));
+    const formatResultYear = year => year >= 2019 ? `R${year - 2018}` : String(year);
     const storeMatchCounts = []; // 全店舗のマッチ状況と書き込み列を保存
 
     // テンプレートファイルの読み込み
@@ -2019,17 +2023,11 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
     }
 
     // 結果資料 月列ヘルパー（4月=col2, 5月=col3, … 12月=col10, 1月=col11, … 3月=col13）
-    const _getMonthCol = (dateStr) => {
-      const d = new Date(dateStr + 'T00:00:00');
-      const m = d.getMonth() + 1;
-      return m >= 4 ? m - 2 : m + 10;
-    };
     const _getMonthColFromYearMonth = (yearMonth) => {
       const m = Number(String(yearMonth || '').slice(5, 7));
       if (!Number.isFinite(m) || m < 1 || m > 12) return null;
       return m >= 4 ? m - 2 : m + 10;
     };
-    const _monthCol = _getMonthCol(state.date);
 
     // 結果資料 店舗行検索ヘルパー
     // テンプレート側にふりがな・全角空白・「店」の有無などの表記差があっても一致させる
@@ -2123,12 +2121,12 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
       };
 
       // 第○回は管理者設定の基準年月・基準回数から月ごとに+1する。
-      const kaiNum = calcInspectionCount(state.date);
+      const kaiNum = calcInspectionCount(dateStr);
       const kaiText = kaiNum !== '' ? `第 ${kaiNum} 回　` : '';
 
       if (!isHQStore) {
         // ヘッダー：審査日／調査店舗／参加者
-        ws.getCell('C3').value = formatDateJp(state.date, false);
+        ws.getCell('C3').value = formatDateJp(dateStr, false);
         ws.getCell('I3').value = storeName;
         ws.getCell('K3').value = '';
         ws.getCell('N3').value = storeAnswers.hallEvaluator || storeAnswers.evaluatorName || state.evaluator || '';
@@ -2143,7 +2141,7 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
       } else {
         // 本部用シート：回数／点検日／担当者
         ws.getCell('A1').value = `${kaiText}ＡＫＴ活動審査表`;
-        ws.getCell('K1').value = `　点検日：${formatDateJp(state.date, true)}`;
+        ws.getCell('K1').value = `　点検日：${formatDateJp(dateStr, true)}`;
         ws.getCell('C3').value = storeAnswers.hqEvaluator || storeAnswers.evaluatorName || state.evaluator || '';
       }
 
@@ -2527,7 +2525,27 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
       // === 結果資料シートへの書き込み（全店分・色付き） ===
       // 店舗用・本部用のどちらのExcelを出力した場合も、結果資料へ同じ集計結果を反映する
-      if (kekkaWs && _monthCol) {
+      if (kekkaWs && resultYearMonth) {
+        kekkaWs.name = `結果資料${resultYearMonth.replace('-', '.')}`;
+        // 点数表・順位表とも、4〜12月と翌年1〜3月の見出しを揃える。
+        for (const headerRow of [5, 18]) {
+          kekkaWs.getCell(`B${headerRow}`).value = formatResultYear(fiscalStartYear);
+          kekkaWs.getCell(`K${headerRow}`).value = formatResultYear(fiscalStartYear + 1);
+        }
+
+        const scoreRows = [7, 13]; // 本部行を含む
+        const rankRows = [20, 25];
+        // テンプレートに記入済みの点数・順位は2026年度の4〜8月分。
+        // 対象年度外や審査月より後の列から数値を消し、元の色見本は保持する。
+        const templateMonthsToKeep = fiscalStartYear === 2026 ? Math.min(fiscalMonths.length, 5) : 0;
+        for (const [firstRow, lastRow] of [scoreRows, rankRows]) {
+          for (let row = firstRow; row <= lastRow; row++) {
+            for (let col = 2 + templateMonthsToKeep; col <= 13; col++) {
+              kekkaWs.getRow(row).getCell(col).value = null;
+            }
+          }
+        }
+
         // 結果資料の色を明示指定する。
         // 見本セルのコピーはExcelJSでテーマ色が失われる場合があるため使用しない。
         const applyResultColor = (cell, colorKey) => {
@@ -2631,9 +2649,9 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
 
         // 4月から選択月までの月別履歴を点数表・順位表へ反映する。
         // これにより9月出力時も8月までの結果がクラウドから復元される。
-        const historyEntries = Object.entries(monthlyHistoryMap || {})
-          .filter(([, record]) => record && record.scores)
-          .sort(([a], [b]) => a.localeCompare(b));
+        const historyEntries = fiscalMonths
+          .map(yearMonth => [yearMonth, monthlyHistoryMap[yearMonth]])
+          .filter(([, record]) => record?.scores);
 
         for (const [yearMonth, record] of historyEntries) {
           const monthCol = _getMonthColFromYearMonth(yearMonth);
@@ -2761,8 +2779,8 @@ async function exportToExcelAll(btnElement, monthlyHistoryMap = {}) {
             }
           }
         };
-        clearBlankMonthlyCells(7, 13);  // 点数表（本部行を含む）
-        clearBlankMonthlyCells(20, 25); // 順位表
+        clearBlankMonthlyCells(...scoreRows);
+        clearBlankMonthlyCells(...rankRows);
 
         storeMatchCounts.push(
           `  └結果資料: ${reflectedMonths}か月分の履歴を反映（点数${reflectedScores}セル・順位${reflectedRanks}セル）／分析${reflectedAnalysis}店舗`
